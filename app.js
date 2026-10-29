@@ -1,6 +1,7 @@
 (() => {
   'use strict';
   const KEY = 'headtrack.entries.v1';
+  const FACTORS_KEY = 'headtrack.customFactors.v1';
   const options = {
     quality: ['Foggy', 'Heavy', 'Pressure', 'Numb / muted', 'Hazy', 'Other'],
     location: ['Forehead', 'Temples', 'Back of head', 'Top of head', 'One side', 'Whole head', 'Unsure'],
@@ -15,6 +16,7 @@
   };
   const $ = id => document.getElementById(id);
   let entries = [];
+  let customFactors = [];
   let storageOK = true;
   const htmlSafe = x => String(x ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[c]));
   const dateKey = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -25,7 +27,30 @@
   const asString = (v, max=3000) => typeof v === 'string' ? v.slice(0,max) : '';
   const validDate = s => typeof s === 'string' && !Number.isNaN(new Date(s).getTime());
   const clampScore = v => Number.isFinite(Number(v)) ? Math.min(10,Math.max(0,Math.round(Number(v)))) : 0;
-  const listValid = (vals, key) => Array.isArray(vals) ? [...new Set(vals.filter(v => typeof v === 'string' && options[key].includes(v)))] : [];
+  const cleanFactor = v => typeof v === 'string' ? v.trim().replace(/\s+/g,' ').slice(0,60) : '';
+  const isBuiltInFactor = value => options.trigger.some(f => f.toLocaleLowerCase() === value.toLocaleLowerCase());
+  function uniqueFactors(values) {
+    if(!Array.isArray(values))return [];
+    const seen = new Set(options.trigger.map(v=>v.toLocaleLowerCase()));
+    const result = [];
+    for(const value of values){
+      const factor = cleanFactor(value);
+      const lower = factor.toLocaleLowerCase();
+      if(!factor || seen.has(lower))continue;
+      seen.add(lower);result.push(factor);
+      if(result.length>=150)break;
+    }
+    return result;
+  }
+  function listValid(vals,key) {
+    if(!Array.isArray(vals))return [];
+    if(key==='trigger') {
+      const seen=new Set();
+      return vals.map(cleanFactor).filter(v=>{const lower=v.toLocaleLowerCase();if(!v||seen.has(lower))return false;seen.add(lower);return true;}).slice(0,150);
+    }
+    return [...new Set(vals.filter(v=>typeof v==='string' && options[key].includes(v)))];
+  }
+  const triggerChoices = () => [...options.trigger,...customFactors];
 
   function cleanEntry(x) {
     if (!x || typeof x !== 'object' || !validDate(x.occurredAt)) return null;
@@ -46,9 +71,14 @@
   }
   function load() {
     try {
+      const savedFactors = localStorage.getItem(FACTORS_KEY);
+      const parsedFactors = savedFactors ? JSON.parse(savedFactors) : [];
+      if(!Array.isArray(parsedFactors))throw Error('Saved custom factor list is invalid.');
+      customFactors = uniqueFactors(parsedFactors);
       const raw = localStorage.getItem(KEY);
       const parsed = raw ? JSON.parse(raw) : [];
-      entries = Array.isArray(parsed) ? parsed.map(cleanEntry).filter(Boolean) : [];
+      if(!Array.isArray(parsed))throw Error('Saved entries are invalid.');
+      entries = parsed.map(cleanEntry).filter(Boolean);
       sortEntries();
     } catch (err) {
       console.error('Could not read saved diary',err);
@@ -62,6 +92,11 @@
     try { localStorage.setItem(KEY, JSON.stringify(entries)); }
     catch (err) {throw Error('Save failed. Device storage may be full or blocked. Export a backup if possible.');}
   }
+  function persistFactors(factors) {
+    if(!storageOK)throw Error('Browser storage is unavailable.');
+    try{localStorage.setItem(FACTORS_KEY,JSON.stringify(factors));}
+    catch(err){throw Error('Could not save your custom factors. Storage may be full or blocked.');}
+  }
   function updateEntries(next) {
     const old=entries;
     entries=next;
@@ -69,16 +104,53 @@
     try {persist();renderHistory();renderInsights();}
     catch(err){entries=old;throw err;}
   }
+  function updateFactors(next) {
+    const cleaned=uniqueFactors(next);
+    persistFactors(cleaned);
+    customFactors=cleaned;
+    renderChoices('trigger');
+    renderFactorManager();
+  }
   function sortEntries() { entries.sort((a,b)=>new Date(b.occurredAt)-new Date(a.occurredAt)); }
   function setFeedback(id,msg,err=false) { const el=$(id);el.textContent=msg;el.style.color=err?'#b12635':'#006960'; }
 
+  function renderChoices(name, additionalSelected=[]) {
+    const current=checked(name);
+    const selected=new Set([...current,...additionalSelected]);
+    const vals=name==='trigger' ? [...triggerChoices(),...additionalSelected.filter(v=>!triggerChoices().includes(v))] : options[name];
+    $(name+'-choices').innerHTML=vals.map((s,i)=>{
+      const id=`${name}-${i}`;
+      return `<label class="chip"><input type="checkbox" id="${id}" name="${name}" value="${htmlSafe(s)}" ${selected.has(s)?'checked':''}><span>${htmlSafe(s)}</span></label>`;
+    }).join('');
+  }
   function initChoices() {
-    for(const [name,vals] of Object.entries(options)) {
-      $(name+'-choices').innerHTML=vals.map((s,i)=>{
-        const id=`${name}-${i}`;
-        return `<label class="chip"><input type="checkbox" id="${id}" name="${name}" value="${htmlSafe(s)}"><span>${htmlSafe(s)}</span></label>`;
-      }).join('');
+    for(const name of Object.keys(options))renderChoices(name);
+  }
+  function renderFactorManager() {
+    const el=$('custom-factor-list');
+    el.innerHTML=customFactors.length?customFactors.map((s,i)=>`<div class="saved-factor"><span>${htmlSafe(s)}</span><button type="button" data-remove-factor="${i}" aria-label="Remove ${htmlSafe(s)} from contributing factor choices">Remove</button></div>`).join(''):'<span class="empty-factors">No custom factors added yet.</span>';
+  }
+  function addFactor() {
+    const field=$('new-factor');
+    const factor=cleanFactor(field.value);
+    if(!factor){setFeedback('factor-feedback','Enter a contributing factor first.',true);return;}
+    const duplicate=triggerChoices().find(v=>v.toLocaleLowerCase()===factor.toLocaleLowerCase());
+    if(duplicate){
+      for(const el of document.querySelectorAll('input[name="trigger"]'))if(el.value===duplicate)el.checked=true;
+      field.value='';setFeedback('factor-feedback',`“${duplicate}” is already listed and has been selected.`);return;
     }
+    try {
+      if(customFactors.length>=150)throw Error('Maximum of 150 custom factors reached.');
+      updateFactors([...customFactors,factor]);
+      for(const el of document.querySelectorAll('input[name="trigger"]'))if(el.value===factor)el.checked=true;
+      field.value='';setFeedback('factor-feedback',`Added “${factor}” and selected it for this check-in.`);
+    }catch(err){setFeedback('factor-feedback',err.message,true);}
+  }
+  async function removeFactor(index) {
+    const factor=customFactors[index];if(!factor)return;
+    if(!await confirmAction('Remove custom factor?',`Remove “${factor}” from your contributing factor choices? It will remain in previously saved check-ins.`))return;
+    try{updateFactors(customFactors.filter((_,i)=>i!==index));setFeedback('data-feedback',`Removed “${factor}” from future choices. Older check-ins were preserved.`);}
+    catch(err){setFeedback('data-feedback',err.message,true);}
   }
   const checked = name => [...document.querySelectorAll(`input[name="${name}"]:checked`)].map(el=>el.value);
   function setChecked(name,values) {
@@ -97,6 +169,8 @@
     $('save-btn').textContent='Save check-in';
     $('cancel-edit').hidden=true;
     for(const s of ['headache','dullness'])updateSlider(s);
+    renderChoices('trigger');
+    setFeedback('factor-feedback','');
     setFeedback('save-feedback','');
   }
   function showTab(tab) {
@@ -139,6 +213,7 @@
     $('edit-id').value=x.id;
     $('occurred-at').value=localDatetime(new Date(x.occurredAt));
     for(const s of ['headache','dullness']){$(s).value=x[s];updateSlider(s);}
+    renderChoices('trigger',x.trigger);
     for(const s of ['quality','location','symptom','trigger'])setChecked(s,x[s]);
     $('duration').value=x.duration??'';
     $('impact').value=x.impact;
@@ -248,14 +323,24 @@
     try {
       const content=await file.text();
       const raw=JSON.parse(content);
-      if(!raw||raw.format!=='headtrack-backup'||raw.version!==1||!Array.isArray(raw.entries))throw Error('This is not a valid HeadTrack JSON backup.');
+      if(!raw||raw.format!=='headtrack-backup'||![1,2].includes(raw.version)||!Array.isArray(raw.entries))throw Error('This is not a valid HeadTrack JSON backup.');
+      if(raw.version===2&&!Array.isArray(raw.customFactors))throw Error('The backup has an invalid custom factor list.');
+      if(raw.entries.length>50000)throw Error('This backup contains too many entries.');
       const imported=raw.entries.map(cleanEntry);
       if(imported.some(e=>!e))throw Error('Some backup entries have invalid dates. Nothing was imported.');
-      if(!await confirmAction('Import backup?',`Merge ${imported.length} entries from this backup? Entries with the same ID will be replaced.`))return;
+      // Old v1 backups have no factor list: derive names from the saved entries.
+      // New v2 backups preserve the actual active choice list, even if historical entries use deleted factors.
+      const fromBackup=raw.version===2?raw.customFactors:imported.flatMap(e=>e.trigger.filter(t=>!isBuiltInFactor(t)));
+      const nextFactors=uniqueFactors([...customFactors,...fromBackup]);
       const combined=new Map(entries.map(e=>[e.id,e]));
       for(const e of imported)combined.set(e.id,e);
+      if(!await confirmAction('Import backup?',`Import ${imported.length} entries and ${nextFactors.length-customFactors.length} additional custom factors? Existing entries are kept unless their ID matches one in the backup.`))return;
+      // Persist the larger entry data first. Only update the factor choices once the entries have saved.
       updateEntries([...combined.values()]);
-      setFeedback('data-feedback',`Import complete. ${imported.length} backup entries processed; ${entries.length} total entries now on this device.`);
+      try { updateFactors(nextFactors); }
+      catch(err){setFeedback('data-feedback',`Entries imported (${entries.length} total), but factors could not be saved: ${err.message}`,true);return;}
+      resetForm();
+      setFeedback('data-feedback',`Backup restored. ${imported.length} entries processed; ${entries.length} total entries and ${customFactors.length} custom factors on this device.`);
     }catch(err){setFeedback('data-feedback',`Import failed: ${err.message}`,true);}
     finally{$('import-json').value='';}
   }
@@ -265,14 +350,18 @@
     try{updateEntries([]);setFeedback('data-feedback','All entries deleted from this device.');}catch(err){setFeedback('data-feedback',err.message,true);}
   }
 
-  initChoices();
   load();
+  initChoices();
+  renderFactorManager();
   resetForm();
   renderHistory();
   renderInsights();
   document.querySelectorAll('.tab').forEach(tab=>tab.addEventListener('click',()=>showTab(tab.dataset.tab)));
   for(const id of ['headache','dullness'])$(id).addEventListener('input',()=>updateSlider(id));
   $('entry-form').addEventListener('submit',handleSave);
+  $('add-factor').addEventListener('click',addFactor);
+  $('new-factor').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();addFactor();}});
+  $('custom-factor-list').addEventListener('click',e=>{const button=e.target.closest('button[data-remove-factor]');if(button)removeFactor(Number(button.dataset.removeFactor));});
   $('cancel-edit').addEventListener('click',resetForm);
   $('history-filter').addEventListener('change',renderHistory);
   $('entry-list').addEventListener('click',e=>{
@@ -281,7 +370,7 @@
     if(target.dataset.action==='delete')deleteItem(target.dataset.id);
   });
   $('export-json').addEventListener('click',()=>{
-    const data=JSON.stringify({format:'headtrack-backup',version:1,exportedAt:new Date().toISOString(),entries},null,2);
+    const data=JSON.stringify({format:'headtrack-backup',version:2,exportedAt:new Date().toISOString(),customFactors,entries},null,2);
     exportFile(`headtrack-backup-${dateKey(new Date())}.json`,data,'application/json');
   });
   $('export-csv').addEventListener('click',()=>exportFile(`headtrack-entries-${dateKey(new Date())}.csv`,buildCsv(),'text/csv;charset=utf-8'));

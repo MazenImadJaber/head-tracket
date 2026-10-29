@@ -60,6 +60,11 @@
             <fieldset class="choice-field"><legend>Where do you feel it?</legend><div id="location-choices" class="chips"></div></fieldset>
             <fieldset class="choice-field"><legend>Other symptoms</legend><div id="symptom-choices" class="chips"></div></fieldset>
             <fieldset class="choice-field"><legend>Possible contributing factors</legend><div id="trigger-choices" class="chips"></div></fieldset>
+            <div class="custom-factor-add">
+              <label class="field-label" for="new-factor">Add your own contributing factor</label>
+              <div class="inline-action"><input id="new-factor" type="text" maxlength="60" placeholder="e.g. Bruxism or poor posture" autocomplete="off"><button class="btn btn-secondary" type="button" id="add-factor">Add factor</button></div>
+              <p id="factor-feedback" class="feedback" role="status" aria-live="polite"></p>
+            </div>
             <div class="field-row">
               <div><label class="field-label" for="duration">Duration so far (minutes)</label><input id="duration" type="number" min="0" max="100800" step="1" inputmode="numeric" placeholder="e.g. 45"></div>
               <div><label class="field-label" for="impact">Impact on activity</label><select id="impact"><option value="">Not recorded</option><option value="0">None</option><option value="1">Mild</option><option value="2">Moderate</option><option value="3">Severe</option></select></div>
@@ -109,10 +114,14 @@
           <h3>Back up and export</h3>
           <p class="explain">Export JSON regularly to keep a restorable backup. CSV is useful for spreadsheets or sharing a diary with a clinician.</p>
           <div class="stacked-actions"><button type="button" id="export-json" class="btn btn-primary">Export JSON backup</button><button type="button" id="export-csv" class="btn btn-secondary">Export CSV</button></div>
-          <h3>Restore from a backup</h3>
-          <label class="file-label" for="import-json">Choose JSON backup file</label>
+          <h3>Upload / restore a backup</h3>
+          <p class="explain">Select a HeadTrack JSON backup from Files or iCloud Drive. The file is processed on your device; nothing is uploaded to a server.</p>
+          <label class="file-label" for="import-json">Select a JSON backup to import</label>
           <input type="file" id="import-json" accept=".json,application/json">
-          <p class="explain">Imported entries are merged by ID. Entries with matching IDs from the backup replace the locally stored versions.</p>
+          <p class="explain">You will review a confirmation before importing. Entries are merged by ID; matching IDs in the backup replace the local entry. Your custom factors are also restored.</p>
+          <h3>My contributing factors</h3>
+          <p class="explain">Manage factors you added. Removing a factor from the choices keeps it in older entries where you used it.</p>
+          <div id="custom-factor-list" class="saved-factor-list"></div>
           <h3>Delete local data</h3>
           <button type="button" id="clear-data" class="btn btn-danger">Delete all entries</button>
           <p id="data-feedback" role="status" aria-live="polite" class="feedback"></p>

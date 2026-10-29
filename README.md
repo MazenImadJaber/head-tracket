@@ -9,7 +9,8 @@ HeadTrack is a small, private, mobile-first progressive web app for tracking **h
 - Descriptions, locations, associated symptoms and possible contributing factors
 - Duration so far (optional), impact on activities, medication/treatment and free-text notes
 - Editable history, 30-day statistics and 14-day intensity trends
-- CSV export, restorable JSON backup/import, and deletion
+- Add your own contributing factors as selectable chips, remove them from future choices, and include them in backups
+- CSV export, restorable JSON backup upload/import (supports older v1 backups), and deletion
 
 ## Easiest iPhone installation: GitHub Pages
 
@@ -36,9 +37,18 @@ Then open `http://localhost:8000` on that same computer. You can test the app an
 
 - Entries are saved with `localStorage` on each specific browser/web-app installation. Safari and Home Screen app storage may not be shared. **Always log through the same installed icon.**
 - The application doesn't transmit entries to any server. There is no account, sync or encryption. Someone with access to your unlocked phone might be able to view the diary.
-- Removing the Home Screen app, clearing browsing data, or losing/replacing the device can erase entries. **Export a JSON backup regularly and save it somewhere safe** (e.g. Files/iCloud Drive). CSV is for analysis; use JSON to restore.
+- Removing the Home Screen app, clearing browsing data, or losing/replacing the device can erase entries. **Export a JSON backup regularly and save it somewhere safe** (e.g. Files/iCloud Drive). CSV is for analysis; use JSON to restore. JSON backups now include your custom factor choices as well as check-ins.
 - A backup you deliberately share is no longer confined to your phone.
 - The app does not diagnose symptoms or replace medical evaluation.
+
+## Add custom factors and upload a backup
+
+- In **Log**, under **Possible contributing factors**, type a new factor (up to 60 characters), then tap **Add factor**. It is saved as a selectable chip and automatically selected for that check-in.
+- In **Data → My contributing factors**, you can remove a personal factor from your future choices. Older records mentioning it are preserved.
+- In **Data → Export JSON backup**, export the current entries and your custom contributing factors.
+- In **Data → Upload / restore a backup**, select the `.json` file from the iPhone Files app. Confirm to merge its entries and any custom factors. Local entries whose IDs match the backup are updated; other local entries are kept.
+- Both previous HeadTrack `version: 1` and new `version: 2` JSON backups are supported. **CSV is not a restorable backup.** Backup import is local to the device; no file is uploaded to an external server.
+- To keep personal factors and entries when upgrading an existing installation, update the files at the **same GitHub Pages URL** and reload the app. You do not need to uninstall it. Export a backup before updating as a precaution.
 
 ## Files
 
@@ -51,4 +61,4 @@ Then open `http://localhost:8000` on that same computer. You can test the app an
 
 ## Updating
 
-Replace the app's files in the same repository, preserving the HTTPS URL and origin. Update the cache name in `sw.js` (e.g. `headtrack-v2`) when changing files so the installed app downloads the new version. **Do not remove the Home Screen app to update it** without exporting a backup first.
+Replace the app's files in the same repository, preserving the HTTPS URL and origin. Update the cache name in `sw.js` (e.g. `headtrack-v3`) when changing files so the installed app downloads the new version. **Do not remove the Home Screen app to update it** without exporting a backup first.
