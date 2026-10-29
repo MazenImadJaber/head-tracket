@@ -2,3 +2,19 @@
 
 /* Custom factors and restore controls */
 .custom-factor-add{margin-top:13px}.custom-factor-add .field-label{margin-top:10px}.inline-action{display:flex;gap:8px}.inline-action input{min-width:0;flex:1}.inline-action .btn{flex-shrink:0;padding-left:13px;padding-right:13px}.custom-factor-add .feedback{margin:5px 0 0}.saved-factor-list{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0 4px}.saved-factor{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--border);border-radius:10px;padding:3px 4px 3px 11px;font-size:13px;color:#495e70;background:#f6f9fb;max-width:100%}.saved-factor span{overflow-wrap:anywhere}.saved-factor button{border:0;background:#e9eff4;color:#a02f3d;border-radius:8px;padding:8px 10px;font-size:12px;font-weight:700;min-height:34px}.empty-factors{color:var(--muted);font-size:13px}#import-json{display:block;width:100%;margin:8px 0 15px;font-size:14px;max-width:100%}@media(max-width:365px){.inline-action{flex-direction:column}.inline-action .btn{width:100%}}
+
+/* Timed headache episodes */
+.episode-panel{border-color:#bbdfdb;background:linear-gradient(160deg,#fff 0%,#f4fbfa 100%)}
+.full-width{display:block;width:100%}
+.pill-active{background:#d7f3e8;color:#056855}
+.episode-timing{display:grid;grid-template-columns:1.4fr 1fr;gap:10px;margin:0 0 15px}
+.episode-timing>div{padding:13px;background:#f0f7f7;border:1px solid #cce8e4;border-radius:12px;min-width:0}
+.episode-timing span{display:block;color:#58727b;font-size:12px;margin-bottom:5px}
+.episode-timing strong{display:block;color:#155c60;font-size:15px;line-height:1.5;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.episode-duration{display:inline-block;background:#e4f3ef;color:#12685d;padding:7px 9px;border-radius:9px;font-weight:750;font-size:12px;text-align:right;max-width:50%;font-variant-numeric:tabular-nums}
+.episode-edit-form{margin-top:14px;border-top:1px solid #e4edf2;padding-top:4px}
+.episode-edit-form .entry-actions{flex-wrap:wrap}
+.episode-edit-form .btn{flex:1;min-width:112px;padding:11px 9px}
+.episode-edit-form .explain{margin:9px 0 0}
+.form-hint{margin:16px 1px 0}
+@media(max-width:365px){.episode-timing{grid-template-columns:1fr}}
