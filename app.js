@@ -10,15 +10,13 @@
     trigger: ['Poor sleep', 'Stress', 'Screen time', 'Dehydration', 'Missed meal', 'Exercise', 'Caffeine change', 'Unsure']
   };
   const labels = {
-    log: ['How are you feeling?', 'Start or finish a headache episode, or record a quick symptom check-in.'],
-    history: ['Symptom history', 'Review your headache episodes and symptom check-ins.'],
+    log: ['How are you feeling?', 'Record your symptoms as a quick check-in or a timed headache episode.'],
+    history: ['Symptom history', 'Review all symptom records in one place.'],
     insights: ['Patterns over time', 'See what you have recorded, without interpreting missing days as symptom-free.'],
     data: ['Your diary, your data', 'Back up, export and restore your entries.']
   };
   const $ = id => document.getElementById(id);
   let entries = [];
-  let episodes = [];
-  let editingEpisodeId = null;
   let customFactors = [];
   let storageOK = true;
   const htmlSafe = x => String(x ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[c]));
@@ -29,7 +27,7 @@
   const uid = () => (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const asString = (v, max=3000) => typeof v === 'string' ? v.slice(0,max) : '';
   const validDate = s => typeof s === 'string' && !Number.isNaN(new Date(s).getTime());
-  const durationMs = e => Math.max(0,(e.endedAt ? Date.parse(e.endedAt) : Date.now()) - Date.parse(e.startedAt));
+  const durationMs = e => Math.max(0,(e.endedAt ? Date.parse(e.endedAt) : Date.now()) - Date.parse(e.occurredAt));
   function formatDuration(milliseconds) {
     const minutes=Math.floor(milliseconds/60000);
     if(minutes<1)return 'Under 1 min';
@@ -64,35 +62,54 @@
 
   function cleanEntry(x) {
     if (!x || typeof x !== 'object' || !validDate(x.occurredAt)) return null;
+    const type=x.type==='episode'?'episode':'checkin';
+    const start=new Date(x.occurredAt).getTime();
+    const end=type==='episode' && x.endedAt!=null ? (validDate(x.endedAt)?Date.parse(x.endedAt):NaN) : null;
+    if(Number.isNaN(end)||(end!==null&&end<start))return null;
+    const score=v => v==null || v==='' ? null : clampScore(v);
+    const manualDuration = x.duration === null || x.duration === '' || x.duration === undefined ? null : Math.max(0,Math.min(100800,Math.round(Number(x.duration)||0)));
     return {
       id: asString(x.id,100) || uid(),
-      occurredAt: new Date(x.occurredAt).toISOString(),
-      headache: clampScore(x.headache),
-      dullness: clampScore(x.dullness),
+      type,
+      occurredAt: new Date(start).toISOString(),
+      endedAt: type==='episode' ? (end===null?null:new Date(end).toISOString()) : null,
+      headache: score(x.headache),
+      dullness: score(x.dullness),
       quality: listValid(x.quality,'quality'),
       location: listValid(x.location,'location'),
       symptom: listValid(x.symptom,'symptom'),
       trigger: listValid(x.trigger,'trigger'),
-      duration: x.duration === null || x.duration === '' || x.duration === undefined ? null : Math.max(0,Math.min(100800,Math.round(Number(x.duration)||0))),
+      duration: type==='episode' ? (end===null?null:Math.round((end-start)/60000)) : manualDuration,
       impact: ['0','1','2','3'].includes(String(x.impact)) ? String(x.impact) : '',
       medication: asString(x.medication,160),
       notes: asString(x.notes)
     };
   }
-  function cleanEpisode(x) {
-    if(!x||typeof x!=='object'||!validDate(x.startedAt))return null;
-    const start = new Date(x.startedAt).getTime();
-    const end = x.endedAt == null ? null : (validDate(x.endedAt) ? new Date(x.endedAt).getTime() : NaN);
-    if(Number.isNaN(end)||(end!==null&&end<start))return null;
-    return {
-      id: asString(x.id,100)||uid(),
-      startedAt: new Date(start).toISOString(),
-      endedAt: end===null ? null : new Date(end).toISOString(),
-      notes: asString(x.notes,1500)
-    };
+  // The old v3 timer records only contained timestamps and notes.
+  // Preserve missing symptoms as null, not as an invented zero score.
+  function migrateLegacyEpisodes(items, existing=[]) {
+    if(!Array.isArray(items))throw Error('Saved legacy episodes are invalid.');
+    const used=new Set(existing.map(x=>x.id));
+    const converted=[];
+    for(const ep of items) {
+      if(!ep || !validDate(ep.startedAt))throw Error('A legacy episode has an invalid start time.');
+      const id=`v3-episode:${asString(ep.id,100)}`;
+      if(used.has(id))continue; // Idempotent: safe after interrupted migrations or repeat imports.
+      const entry=cleanEntry({id,type:'episode',occurredAt:ep.startedAt,endedAt:ep.endedAt,
+        headache:null,dullness:null,quality:[],location:[],symptom:[],trigger:[],
+        impact:'',medication:'',notes:ep.notes});
+      if(!entry)throw Error('A legacy episode has invalid timestamps.');
+      used.add(id);
+      converted.push(entry);
+    }
+    return converted;
   }
-  const activeEpisode = () => episodes.find(e=>e.endedAt===null);
-  function sortEpisodes() {episodes.sort((a,b)=>Date.parse(b.startedAt)-Date.parse(a.startedAt));}
+  const activeEpisode = () => entries.find(e=>e.type==='episode' && e.endedAt===null);
+  function validateEntries(items) {
+    if(items.some(e=>!e))throw Error('Some records have invalid timestamps.');
+    if(items.filter(e=>e.type==='episode'&&e.endedAt===null).length>1)
+      throw Error('Only one active headache episode can exist at a time.');
+  }
   function load() {
     try {
       const savedFactors = localStorage.getItem(FACTORS_KEY);
@@ -102,20 +119,26 @@
       const raw = localStorage.getItem(KEY);
       const parsed = raw ? JSON.parse(raw) : [];
       if(!Array.isArray(parsed))throw Error('Saved entries are invalid.');
-      entries = parsed.map(cleanEntry).filter(Boolean);
-      sortEntries();
+      entries = parsed.map(cleanEntry);
+      validateEntries(entries);
       const rawEpisodes=localStorage.getItem(EPISODES_KEY);
-      const parsedEpisodes=rawEpisodes?JSON.parse(rawEpisodes):[];
-      if(!Array.isArray(parsedEpisodes))throw Error('Saved episodes are invalid.');
-      episodes=parsedEpisodes.map(cleanEpisode);
-      if(episodes.some(e=>!e)||episodes.filter(e=>!e.endedAt).length>1)throw Error('Saved episode timestamps are invalid.');
-      sortEpisodes();
+      if(rawEpisodes){
+        const oldEpisodes=JSON.parse(rawEpisodes);
+        const converted=migrateLegacyEpisodes(oldEpisodes,entries);
+        const merged=[...entries,...converted];
+        validateEntries(merged);
+        // Write the unified collection BEFORE removing the old key. If the
+        // write fails, the original episode records remain intact.
+        localStorage.setItem(KEY,JSON.stringify(merged));
+        entries=merged;
+        localStorage.removeItem(EPISODES_KEY);
+      }
+      sortEntries();
     } catch (err) {
       console.error('Could not read saved diary',err);
       storageOK = false;
       entries = [];
-      episodes = [];
-      alert('Could not access saved entries. Browser storage may be disabled or contain invalid data. Do not save new entries until this is resolved.');
+      alert('Could not access or migrate saved entries. Your original browser data has not been deliberately cleared. Export a backup from the previous version if needed; do not add new entries until this is resolved.');
     }
   }
   function persist() {
@@ -123,31 +146,19 @@
     try { localStorage.setItem(KEY, JSON.stringify(entries)); }
     catch (err) {throw Error('Save failed. Device storage may be full or blocked. Export a backup if possible.');}
   }
-  function persistEpisodes() {
-    if(!storageOK)throw Error('Browser storage is unavailable.');
-    try {localStorage.setItem(EPISODES_KEY,JSON.stringify(episodes));}
-    catch(err){throw Error('Could not save headache episode. Device storage may be unavailable.');}
-  }
   function persistFactors(factors) {
     if(!storageOK)throw Error('Browser storage is unavailable.');
     try{localStorage.setItem(FACTORS_KEY,JSON.stringify(factors));}
     catch(err){throw Error('Could not save your custom factors. Storage may be full or blocked.');}
   }
   function updateEntries(next) {
+    const normalized=next.map(cleanEntry);
+    validateEntries(normalized);
     const old=entries;
-    entries=next;
+    entries=normalized;
     sortEntries();
-    try {persist();renderHistory();renderInsights();}
-    catch(err){entries=old;throw err;}
-  }
-  function updateEpisodes(next) {
-    const old=episodes;
-    const normalized=next.map(cleanEpisode);
-    if(normalized.some(e=>!e)||normalized.filter(e=>!e.endedAt).length>1)throw Error('Only one valid active headache episode can exist at a time.');
-    episodes=normalized;
-    sortEpisodes();
-    try{persistEpisodes();renderEpisodeState();renderHistory();renderInsights();}
-    catch(err){episodes=old;renderEpisodeState();throw err;}
+    try {persist();renderEpisodeState();renderHistory();renderInsights();}
+    catch(err){entries=old;renderEpisodeState();throw err;}
   }
   function updateFactors(next) {
     const cleaned=uniqueFactors(next);
@@ -203,7 +214,7 @@
   }
   function updateSlider(id) {
     const el=$(id), val=Number(el.value);
-    $(id+'-val').textContent=String(val);
+    $(id+'-val').textContent=el.dataset.missing==='true'?'—':String(val);
     el.style.setProperty('--pct',`${val*10}%`);
   }
   function updateEpisodeElapsed() {
@@ -216,30 +227,46 @@
     $('episode-active').hidden=!active;
     $('episode-status').textContent=active?'In progress':'Not active';
     $('episode-status').classList.toggle('pill-active',Boolean(active));
+    $('episode-start-form').hidden=Boolean(active)||Boolean($('edit-id').value);
     if(active){
-      $('episode-start-time').textContent=`${displayDate(active.startedAt)} · ${displayTime(active.startedAt)}`;
+      $('episode-start-time').textContent=`${displayDate(active.occurredAt)} · ${displayTime(active.occurredAt)}`;
       updateEpisodeElapsed();
     }
   }
+  function collectEntry(id,type,occurredAt,endedAt=null) {
+    return cleanEntry({
+      id,type,occurredAt,endedAt,
+      headache:$('headache').dataset.missing==='true'?null:$('headache').value,
+      dullness:$('dullness').dataset.missing==='true'?null:$('dullness').value,
+      quality:checked('quality'),location:checked('location'),symptom:checked('symptom'),trigger:checked('trigger'),
+      duration:$('duration').value,impact:$('impact').value,medication:$('medication').value,notes:$('notes').value
+    });
+  }
   function startEpisode() {
+    if(!storageOK){setFeedback('episode-feedback','Cannot save: device storage is unavailable.',true);return;}
     if(activeEpisode()){setFeedback('episode-feedback','A headache episode is already active.',true);return;}
+    if($('edit-id').value){setFeedback('episode-feedback','Save or cancel the entry you are editing before starting an episode.',true);return;}
     try {
+      // Capture the same full symptom form used for a regular check-in.
+      // Use the actual button time, rather than a potentially stale form default.
       const now=new Date().toISOString();
-      updateEpisodes([{id:uid(),startedAt:now,endedAt:null,notes:''},...episodes]);
-      setFeedback('episode-feedback','Checked in. The start time is saved on this device.');
+      const item=collectEntry(uid(),'episode',now,null);
+      updateEntries([item,...entries]);
+      resetForm();
+      setFeedback('episode-feedback','Episode checked in with your symptom information. You can edit it in History.');
     }catch(err){setFeedback('episode-feedback',err.message,true);}
   }
   function stopEpisode() {
     const active=activeEpisode();
     if(!active){setFeedback('episode-feedback','There is no active episode to end.',true);return;}
     const now=new Date().toISOString();
-    if(Date.parse(now)<Date.parse(active.startedAt)){
-      setFeedback('episode-feedback','Your device clock is earlier than the start time. Correct it or edit the episode in History.',true);return;
+    if(Date.parse(now)<Date.parse(active.occurredAt)){
+      setFeedback('episode-feedback','Your device clock is earlier than the start time. Correct it in History.',true);return;
     }
     const ended={...active,endedAt:now};
     try {
-      updateEpisodes(episodes.map(e=>e.id===active.id?ended:e));
-      setFeedback('episode-feedback',`Checked out. Episode saved (${formatDuration(durationMs(ended))}). See History to edit the times.`);
+      updateEntries(entries.map(e=>e.id===active.id?ended:e));
+      setFeedback('episode-feedback',`Checked out. Duration: ${formatDuration(durationMs(ended))}. All your symptom details remain in the same entry.`);
     }catch(err){setFeedback('episode-feedback',err.message,true);}
   }
   function resetForm() {
@@ -249,7 +276,11 @@
     $('entry-heading').textContent='New check-in';
     $('save-btn').textContent='Save check-in';
     $('cancel-edit').hidden=true;
-    for(const s of ['headache','dullness'])updateSlider(s);
+    $('episode-start-form').hidden=Boolean(activeEpisode());
+    $('episode-edit-fields').hidden=true;
+    $('duration-field').hidden=false;
+    $('episode-end-at').value='';
+    for(const s of ['headache','dullness']){delete $(s).dataset.missing;updateSlider(s);}
     renderChoices('trigger');
     setFeedback('factor-feedback','');
     setFeedback('save-feedback','');
@@ -278,11 +309,17 @@
     const d=new Date($('occurred-at').value);
     if (Number.isNaN(d.getTime())) {setFeedback('save-feedback','Choose a valid date and time.',true);return;}
     const id=$('edit-id').value||uid();
-    const item=cleanEntry({
-      id,occurredAt:d.toISOString(),headache:$('headache').value,dullness:$('dullness').value,
-      quality:checked('quality'),location:checked('location'),symptom:checked('symptom'),trigger:checked('trigger'),
-      duration:$('duration').value,impact:$('impact').value,medication:$('medication').value,notes:$('notes').value
-    });
+    const original=entries.find(x=>x.id===id);
+    const type=original?.type||'checkin';
+    let end=null;
+    if(type==='episode'&&$('episode-end-at').value){
+      const parsed=new Date($('episode-end-at').value);
+      if(Number.isNaN(parsed.getTime())||parsed<d){setFeedback('save-feedback','The episode finish must not precede its start.',true);return;}
+      end=parsed.toISOString();
+    }
+    if(type==='episode' && d.getTime()>Date.now()+60000){setFeedback('save-feedback','Episode start cannot be in the future.',true);return;}
+    if(type==='episode' && end && Date.parse(end)>Date.now()+60000){setFeedback('save-feedback','Episode finish cannot be in the future.',true);return;}
+    const item=collectEntry(id,type,d.toISOString(),end);
     try {
       updateEntries([item,...entries.filter(x=>x.id!==id)]);
       resetForm();
@@ -294,16 +331,24 @@
     showTab('log');
     $('edit-id').value=x.id;
     $('occurred-at').value=localDatetime(new Date(x.occurredAt));
-    for(const s of ['headache','dullness']){$(s).value=x[s];updateSlider(s);}
+    for(const s of ['headache','dullness']){
+      if(x[s]===null){$(s).value=0;$(s).dataset.missing='true';}
+      else {$(s).value=x[s];delete $(s).dataset.missing;}
+      updateSlider(s);
+    }
     renderChoices('trigger',x.trigger);
     for(const s of ['quality','location','symptom','trigger'])setChecked(s,x[s]);
-    $('duration').value=x.duration??'';
+    $('duration').value=x.type==='episode'?'':(x.duration??'');
+    $('duration-field').hidden=x.type==='episode';
+    $('episode-edit-fields').hidden=x.type!=='episode';
+    $('episode-end-at').value=x.type==='episode'&&x.endedAt?localDatetime(new Date(x.endedAt)):'';
     $('impact').value=x.impact;
     $('medication').value=x.medication;
     $('notes').value=x.notes;
-    $('entry-heading').textContent='Edit check-in';
+    $('entry-heading').textContent=x.type==='episode'?'Edit headache episode':'Edit check-in';
     $('save-btn').textContent='Save changes';
     $('cancel-edit').hidden=false;
+    $('episode-start-form').hidden=true;
     $('occurred-at').focus({preventScroll:true});
   }
   function confirmAction(title,message) {
@@ -316,90 +361,41 @@
       dialog.showModal();
     });
   }
-  async function deleteItem(id) {
-    const x=entries.find(x=>x.id===id);if(!x)return;
-    if(!await confirmAction('Delete entry?',`Delete the check-in from ${displayDate(x.occurredAt)} at ${displayTime(x.occurredAt)}? This cannot be undone without a backup.`))return;
-    try{updateEntries(entries.filter(x=>x.id!==id));}catch(err){alert(err.message);}
-  }
-  function episodeEditHtml(x) {
-    const started=localDatetime(new Date(x.startedAt));
-    const ended=x.endedAt?localDatetime(new Date(x.endedAt)):'';
-    return `<form class="episode-edit-form" data-episode-id="${htmlSafe(x.id)}">
-      <label class="field-label">Started at<input type="datetime-local" name="startedAt" value="${started}" required></label>
-      <label class="field-label">Finished at (leave blank if still active)<input type="datetime-local" name="endedAt" value="${ended}"></label>
-      <label class="field-label">Episode notes<textarea name="notes" rows="2" maxlength="1500" placeholder="Any details about this episode?">${htmlSafe(x.notes)}</textarea></label>
-      <div class="entry-actions"><button class="btn btn-primary" type="submit">Save episode</button><button class="btn btn-ghost" type="button" data-episode-action="cancel" data-id="${htmlSafe(x.id)}">Cancel</button></div>
-      <p class="explain">Editing timestamps uses minute precision. Check-out must not be before check-in.</p>
-    </form>`;
-  }
-  function renderEpisodes(cutoff) {
-    const visible=episodes.filter(x=>Date.parse(x.startedAt)>=cutoff || x.endedAt===null);
-    $('episode-total').textContent=`${visible.length} ${visible.length===1?'episode':'episodes'}`;
-    $('episode-list').innerHTML=visible.length?visible.map(x=>{
-      const ongoing=x.endedAt===null;
-      return `<article class="entry-card">
-        <div class="entry-head"><div><div class="entry-date">${displayDate(x.startedAt)}</div><div class="entry-time">${displayTime(x.startedAt)}${ongoing?' · Ongoing':` – ${displayTime(x.endedAt)}`}</div></div><span class="episode-duration">${ongoing?'In progress · ':''}${formatDuration(durationMs(x))}</span></div>
-        <p class="entry-meta">Started: ${htmlSafe(new Date(x.startedAt).toLocaleString('en-AU'))}${ongoing?'':` · Finished: ${htmlSafe(new Date(x.endedAt).toLocaleString('en-AU'))}`}</p>
-        ${x.notes?`<p class="entry-note">${htmlSafe(x.notes)}</p>`:''}
-        ${editingEpisodeId===x.id?episodeEditHtml(x):`<div class="entry-actions"><button type="button" class="link-button" data-episode-action="edit" data-id="${htmlSafe(x.id)}">Edit times / notes</button><button type="button" class="link-button danger" data-episode-action="delete" data-id="${htmlSafe(x.id)}">Delete</button></div>`}
-      </article>`;
-    }).join(''):'<div class="empty">No headache episodes in this period.</div>';
-  }
-  function saveEpisodeEdit(form) {
-    const x=episodes.find(e=>e.id===form.dataset.episodeId);
-    if(!x)return;
-    const start=new Date(form.elements.startedAt.value);
-    const endRaw=form.elements.endedAt.value;
-    const end=endRaw?new Date(endRaw):null;
-    if(Number.isNaN(start.getTime())||(end&&Number.isNaN(end.getTime()))||(end&&end<start)){
-      alert('Enter valid times. The finish must be after or equal to the start.');return;
-    }
-    if(start.getTime()>Date.now()+60000){alert('The start cannot be in the future.');return;}
-    if(end&&end.getTime()>Date.now()+60000){alert('The finish cannot be in the future.');return;}
-    try{
-      updateEpisodes(episodes.map(e=>e.id===x.id?{...e,startedAt:start.toISOString(),endedAt:end?end.toISOString():null,notes:form.elements.notes.value}:e));
-      editingEpisodeId=null;
-      renderHistory();
-    }catch(err){alert(err.message);}
-  }
-  async function deleteEpisode(id) {
-    const x=episodes.find(e=>e.id===id);if(!x)return;
-    if(!await confirmAction('Delete headache episode?',`Delete the episode started ${displayDate(x.startedAt)} at ${displayTime(x.startedAt)}? Separate symptom check-ins will remain.`))return;
-    try{
-      updateEpisodes(episodes.filter(e=>e.id!==id));
-      if(editingEpisodeId===id)editingEpisodeId=null;
-      renderHistory();
-    }catch(err){alert(err.message);}
-  }
   function renderHistory() {
     const range=$('history-filter').value;
     const cutoff=range==='all'?-Infinity:Date.now()-Number(range)*86400000;
-    renderEpisodes(cutoff);
-    const visible=entries.filter(x=>new Date(x.occurredAt).getTime()>=cutoff);
+    const visible=entries.filter(x=>Date.parse(x.occurredAt)>=cutoff || (x.type==='episode'&&x.endedAt===null));
     $('entry-total').textContent=`${visible.length} ${visible.length===1?'entry':'entries'}`;
     $('entry-list').innerHTML=visible.length ? visible.map(x=>{
       const details=[];
       for(const [field,name] of [['quality','Feels like'],['location','Location'],['symptom','Other symptoms'],['trigger','Factors']])if(x[field].length)details.push(`${name}: ${htmlSafe(x[field].join(', '))}`);
-      if(x.duration!==null)details.push(`Duration: ${x.duration} min`);
+      if(x.type==='episode'){
+        details.unshift(x.endedAt?`Checked out: ${displayDate(x.endedAt)} ${displayTime(x.endedAt)} · Duration: ${formatDuration(durationMs(x))}`:`Episode active · Elapsed: ${formatDuration(durationMs(x))}`);
+      }else if(x.duration!==null){details.push(`Duration: ${x.duration} min`);}
       if(x.impact!=='')details.push(`Activity impact: ${['None','Mild','Moderate','Severe'][Number(x.impact)]}`);
       if(x.medication)details.push(`Medication: ${htmlSafe(x.medication)}`);
       return `<article class="entry-card">
-          <div class="entry-head"><div><div class="entry-date">${displayDate(x.occurredAt)}</div><div class="entry-time">${displayTime(x.occurredAt)}</div></div>
-          <div class="scores"><span class="mini-score" title="Headache intensity">Pain ${x.headache}</span><span class="mini-score dull" title="Head dullness intensity">Dull ${x.dullness}</span></div></div>
+          <div class="entry-head"><div><div class="entry-date">${displayDate(x.occurredAt)}</div><div class="entry-time">${x.type==='episode'?'Episode started':'Check-in'} · ${displayTime(x.occurredAt)}${x.type==='episode'?(x.endedAt?' · Completed':' · Ongoing'):''}</div></div>
+          <div class="scores"><span class="mini-score" title="Headache intensity">Pain ${x.headache??'—'}</span><span class="mini-score dull" title="Head dullness intensity">Dull ${x.dullness??'—'}</span></div></div>
           ${details.length?`<p class="entry-meta">${details.join(' · ')}</p>`:''}
           ${x.notes?`<p class="entry-note">${htmlSafe(x.notes)}</p>`:''}
           <div class="entry-actions"><button type="button" class="link-button" data-action="edit" data-id="${htmlSafe(x.id)}">Edit</button><button type="button" class="link-button danger" data-action="delete" data-id="${htmlSafe(x.id)}">Delete</button></div>
         </article>`;
-    }).join('') : `<div class="empty">No entries in this period.<br>Use the Log tab to make a check-in.</div>`;
+    }).join('') : '<div class="empty">No entries in this period. Use the Log tab to make a check-in or start an episode.</div>';
+  }
+  async function deleteItem(id) {
+    const x=entries.find(x=>x.id===id);if(!x)return;
+    if(!await confirmAction('Delete entry?',`Delete this ${x.type==='episode'?'headache episode':'check-in'} from ${displayDate(x.occurredAt)} at ${displayTime(x.occurredAt)}? This cannot be undone without a backup.`))return;
+    try{updateEntries(entries.filter(x=>x.id!==id));}catch(err){alert(err.message);}
   }
   function renderInsights() {
     const recent=entries.filter(x=>new Date(x.occurredAt).getTime()>=Date.now()-30*86400000);
     $('stat-entries').textContent=recent.length;
     $('stat-headache-days').textContent=new Set(recent.filter(x=>x.headache>0).map(x=>dateKey(new Date(x.occurredAt)))).size;
     $('stat-dullness-days').textContent=new Set(recent.filter(x=>x.dullness>0).map(x=>dateKey(new Date(x.occurredAt)))).size;
-    const avg = key => (recent.reduce((sum,x)=>sum+x[key],0)/recent.length).toFixed(1);
-    $('stat-avg').textContent=recent.length?`${avg('headache')} / ${avg('dullness')}`:'—';
-    const startedRecently=episodes.filter(e=>Date.parse(e.startedAt)>=Date.now()-30*86400000);
+    const avg = key => {const known=recent.filter(x=>x[key]!==null);return known.length?(known.reduce((sum,x)=>sum+x[key],0)/known.length).toFixed(1):'—';};
+    $('stat-avg').textContent=`${avg('headache')} / ${avg('dullness')}`;
+    const startedRecently=recent.filter(e=>e.type==='episode');
     const completedRecently=startedRecently.filter(e=>e.endedAt!==null);
     $('stat-episodes').textContent=startedRecently.length;
     $('stat-episode-duration').textContent=completedRecently.length?formatDuration(completedRecently.reduce((n,e)=>n+durationMs(e),0)/completedRecently.length):'—';
@@ -414,7 +410,7 @@
     const days=Array.from({length:14},(_,i)=>{const d=new Date(today);d.setDate(today.getDate()-13+i);return d;});
     const daily=new Map(days.map(d=>[dateKey(d),{headache:null,dullness:null}]));
     for(const e of entries){const key=dateKey(new Date(e.occurredAt));const item=daily.get(key);if(!item)continue;
-      for(const k of ['headache','dullness'])item[k]=Math.max(item[k]??0,e[k]);}
+      for(const k of ['headache','dullness'])if(e[k]!==null)item[k]=Math.max(item[k]??0,e[k]);}
     const values=days.map(d=>daily.get(dateKey(d)));
     const W=520,H=205,L=38,R=10,T=12,B=31;
     const xx=i=>L+i*(W-L-R)/13;
@@ -438,16 +434,10 @@
     return '"'+s.replace(/"/g,'""')+'"';
   }
   function buildCsv() {
-    const fields=['occurredAt','headache','dullness','quality','location','symptom','trigger','duration','impact','medication','notes'];
-    const header=['Date and time (ISO)','Headache (0-10)','Dullness (0-10)','Dullness qualities','Location','Other symptoms','Possible factors','Duration (minutes)','Activity impact (0-3)','Medication / treatment','Notes'];
+    const fields=['type','occurredAt','endedAt','headache','dullness','quality','location','symptom','trigger','duration','impact','medication','notes'];
+    const header=['Entry type','Check-in / start (ISO)','Check-out / finish (ISO)','Headache (0-10)','Dullness (0-10)','Dullness qualities','Location','Other symptoms','Possible factors','Duration (minutes)','Activity impact (0-3)','Medication / treatment','Notes'];
     const rows=entries.map(e=>fields.map(key=>csvEscape(e[key])).join(','));
     return '\ufeff'+[header.map(csvEscape).join(','),...rows].join('\r\n');
-  }
-  function buildEpisodeCsv() {
-    const keys=['id','startedAt','endedAt','durationMinutes','status','notes'];
-    const headers=['Episode ID','Start (ISO)','End (ISO)','Duration (minutes, completed only)','Status','Notes'];
-    const rows=episodes.map(e=>[e.id,e.startedAt,e.endedAt??'',e.endedAt?Math.round(durationMs(e)/60000*10)/10:'',e.endedAt?'Completed':'Ongoing',e.notes].map(csvEscape).join(','));
-    return '\ufeff'+[headers.map(csvEscape).join(','),...rows].join('\r\n');
   }
   async function exportFile(filename,content,mime) {
     const blob=new Blob([content],{type:mime});
@@ -464,42 +454,33 @@
   async function importFile(file) {
     if(!file)return;
     try {
-      const content=await file.text();
-      const raw=JSON.parse(content);
-      if(!raw||raw.format!=='headtrack-backup'||![1,2,3].includes(raw.version)||!Array.isArray(raw.entries))throw Error('This is not a valid HeadTrack JSON backup.');
+      const raw=JSON.parse(await file.text());
+      if(!raw||raw.format!=='headtrack-backup'||![1,2,3,4].includes(raw.version)||!Array.isArray(raw.entries))throw Error('This is not a valid HeadTrack JSON backup.');
       if(raw.version>=2&&!Array.isArray(raw.customFactors))throw Error('The backup has an invalid custom factor list.');
       if(raw.entries.length>50000)throw Error('This backup contains too many entries.');
       if(raw.version===3&&!Array.isArray(raw.episodes))throw Error('The backup has an invalid episode list.');
-      const importedEpisodes=raw.version===3?raw.episodes.map(cleanEpisode):[];
-      if(importedEpisodes.length>50000)throw Error('This backup contains too many episodes.');
-      if(importedEpisodes.some(e=>!e))throw Error('Some backup episodes have invalid dates. Nothing was imported.');
       const imported=raw.entries.map(cleanEntry);
-      if(imported.some(e=>!e))throw Error('Some backup entries have invalid dates. Nothing was imported.');
-      // Old v1 backups have no factor list: derive names from the saved entries.
-      // New v2 backups preserve the actual active choice list, even if historical entries use deleted factors.
+      validateEntries(imported);
+      const converted=raw.version===3?migrateLegacyEpisodes(raw.episodes,imported):[];
+      if(imported.length+converted.length>50000)throw Error('This backup contains too many records.');
       const fromBackup=raw.version>=2?raw.customFactors:imported.flatMap(e=>e.trigger.filter(t=>!isBuiltInFactor(t)));
       const nextFactors=uniqueFactors([...customFactors,...fromBackup]);
       const combined=new Map(entries.map(e=>[e.id,e]));
-      for(const e of imported)combined.set(e.id,e);
-      const episodeCombined=new Map(episodes.map(e=>[e.id,e]));
-      for(const e of importedEpisodes)episodeCombined.set(e.id,e);
-      if([...episodeCombined.values()].filter(e=>e.endedAt===null).length>1)throw Error('There would be multiple active episodes after merging. Check out or delete the existing active episode first, then retry.');
-      if(!await confirmAction('Import backup?',`Merge ${imported.length} check-ins, ${importedEpisodes.length} headache episodes and ${nextFactors.length-customFactors.length} new factors? Matching IDs are replaced by the backup. Your other local records are kept.`))return;
-      // Persist the larger entry data first. Only update the factor choices once the entries have saved.
+      for(const e of [...imported,...converted])combined.set(e.id,e);
+      validateEntries([...combined.values()]);
+      if(!await confirmAction('Import backup?',`Merge ${imported.length+converted.length} records and ${nextFactors.length-customFactors.length} new factors? Entries with matching IDs are replaced by the backup. Other local records remain.`))return;
       updateEntries([...combined.values()]);
-      try{updateEpisodes([...episodeCombined.values()]);}
-      catch(err){setFeedback('data-feedback',`Check-ins imported, but episodes could not be saved: ${err.message}`,true);return;}
-      try { updateFactors(nextFactors); }
-      catch(err){setFeedback('data-feedback',`Entries imported (${entries.length} total), but factors could not be saved: ${err.message}`,true);return;}
+      try {updateFactors(nextFactors);}
+      catch(err){setFeedback('data-feedback',`Records imported (${entries.length} total), but custom factors could not be saved: ${err.message}`,true);return;}
       resetForm();
-      setFeedback('data-feedback',`Backup restored. You now have ${entries.length} check-ins, ${episodes.length} headache episodes and ${customFactors.length} custom factors.`);
+      setFeedback('data-feedback',`Backup restored. You now have ${entries.length} entries, including ${entries.filter(e=>e.type==='episode').length} timed episodes, and ${customFactors.length} custom factors.`);
     }catch(err){setFeedback('data-feedback',`Import failed: ${err.message}`,true);}
     finally{$('import-json').value='';}
   }
   async function clearAll(){
-    if(!entries.length&&!episodes.length){setFeedback('data-feedback','There are no check-ins or episodes to delete.');return;}
-    if(!await confirmAction('Delete all records?',`Permanently delete all ${entries.length} check-ins and ${episodes.length} headache episodes? Export a JSON backup first if you want to preserve them.`))return;
-    try{updateEntries([]);updateEpisodes([]);setFeedback('data-feedback','All check-ins and episodes deleted from this device.');}catch(err){setFeedback('data-feedback',err.message,true);}
+    if(!entries.length){setFeedback('data-feedback','There are no entries to delete.');return;}
+    if(!await confirmAction('Delete all records?',`Permanently delete all ${entries.length} entries, including headache episodes? Export a JSON backup first if you want to preserve them.`))return;
+    try{updateEntries([]);setFeedback('data-feedback','All check-ins and episodes deleted from this device.');}catch(err){setFeedback('data-feedback',err.message,true);}
   }
 
   load();
@@ -510,10 +491,12 @@
   renderHistory();
   renderInsights();
   document.querySelectorAll('.tab').forEach(tab=>tab.addEventListener('click',()=>showTab(tab.dataset.tab)));
-  for(const id of ['headache','dullness'])$(id).addEventListener('input',()=>updateSlider(id));
+  for(const id of ['headache','dullness'])$(id).addEventListener('input',()=>{delete $(id).dataset.missing;updateSlider(id);});
   $('entry-form').addEventListener('submit',handleSave);
   $('episode-start').addEventListener('click',startEpisode);
+  $('episode-start-form').addEventListener('click',startEpisode);
   $('episode-stop').addEventListener('click',stopEpisode);
+  $('episode-edit-active').addEventListener('click',()=>{const active=activeEpisode();if(active)editItem(active.id);});
   setInterval(updateEpisodeElapsed,15000);
   document.addEventListener('visibilitychange',()=>{if(!document.hidden)updateEpisodeElapsed();});
   window.addEventListener('pageshow',updateEpisodeElapsed);
@@ -522,28 +505,16 @@
   $('custom-factor-list').addEventListener('click',e=>{const button=e.target.closest('button[data-remove-factor]');if(button)removeFactor(Number(button.dataset.removeFactor));});
   $('cancel-edit').addEventListener('click',resetForm);
   $('history-filter').addEventListener('change',renderHistory);
-  $('episode-list').addEventListener('click',e=>{
-    const button=e.target.closest('button[data-episode-action]');if(!button)return;
-    const {episodeAction:action,id}=button.dataset;
-    if(action==='edit'){editingEpisodeId=id;renderHistory();}
-    if(action==='cancel'){editingEpisodeId=null;renderHistory();}
-    if(action==='delete')deleteEpisode(id);
-  });
-  $('episode-list').addEventListener('submit',e=>{
-    if(!e.target.matches('.episode-edit-form'))return;
-    e.preventDefault();saveEpisodeEdit(e.target);
-  });
   $('entry-list').addEventListener('click',e=>{
     const target=e.target.closest('button[data-action]');if(!target)return;
     if(target.dataset.action==='edit')editItem(target.dataset.id);
     if(target.dataset.action==='delete')deleteItem(target.dataset.id);
   });
   $('export-json').addEventListener('click',()=>{
-    const data=JSON.stringify({format:'headtrack-backup',version:3,exportedAt:new Date().toISOString(),customFactors,entries,episodes},null,2);
+    const data=JSON.stringify({format:'headtrack-backup',version:4,exportedAt:new Date().toISOString(),customFactors,entries},null,2);
     exportFile(`headtrack-backup-${dateKey(new Date())}.json`,data,'application/json');
   });
   $('export-csv').addEventListener('click',()=>exportFile(`headtrack-entries-${dateKey(new Date())}.csv`,buildCsv(),'text/csv;charset=utf-8'));
-  $('export-episodes-csv').addEventListener('click',()=>exportFile(`headtrack-episodes-${dateKey(new Date())}.csv`,buildEpisodeCsv(),'text/csv;charset=utf-8'));
   $('import-json').addEventListener('change',e=>importFile(e.target.files?.[0]));
   $('clear-data').addEventListener('click',clearAll);
   if('serviceWorker' in navigator && (location.protocol==='https:'||location.hostname==='localhost')){

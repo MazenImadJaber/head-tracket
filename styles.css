@@ -18,3 +18,6 @@
 .episode-edit-form .explain{margin:9px 0 0}
 .form-hint{margin:16px 1px 0}
 @media(max-width:365px){.episode-timing{grid-template-columns:1fr}}
+
+/* Shared check-in and episode form controls */
+.form-actions{flex-wrap:wrap}.form-actions .btn{flex:1 1 170px}.form-actions #cancel-edit{flex:0 0 auto}.episode-panel #episode-edit-active{margin:0 0 10px}.episode-panel #episode-stop{margin-top:0}
