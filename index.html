@@ -13,6 +13,7 @@
   <link rel="apple-touch-icon" href="./icon-192.png">
   <link rel="stylesheet" href="./styles.css">
   <title>HeadTrack · symptom diary</title>
+  <script src="./report.js" defer></script>
   <script src="./app.js" defer></script>
 </head>
 <body>
@@ -34,6 +35,7 @@
       <button class="tab" data-tab="data" type="button"><span class="tab-ico">⚙</span> Data</button>
     </nav>
 
+    <div class="reminder-banner" id="reminder-banner" hidden><span id="reminder-message"></span><button type="button" id="dismiss-reminder" class="link-button">Dismiss</button></div>
     <main>
       <section id="view-log" class="view active" aria-labelledby="page-title">
         <section class="panel episode-panel" aria-labelledby="episode-heading">
@@ -46,10 +48,12 @@
             <div class="episode-timing"><div><span>Started</span><strong id="episode-start-time">—</strong></div><div><span>Elapsed</span><strong id="episode-elapsed" aria-live="off">—</strong></div></div>
             <p class="explain">This episode is saved as a normal symptom entry. You can edit its symptoms or log further check-ins without stopping the timer.</p>
             <button class="btn btn-secondary full-width" type="button" id="episode-edit-active">Edit active episode symptoms</button>
+            <button class="btn btn-secondary full-width" type="button" id="episode-progress">Add progress check-in</button>
             <button class="btn btn-danger full-width" type="button" id="episode-stop">Check out · End episode</button>
           </div>
           <p class="feedback" id="episode-feedback" role="status" aria-live="polite"></p>
         </section>
+        <div class="quick-action"><button class="btn btn-ghost" type="button" id="quick-well">Log no symptoms now (0 / 0)</button></div>
         <form id="entry-form" autocomplete="off">
           <input type="hidden" id="edit-id">
           <div class="panel">
@@ -68,11 +72,11 @@
             </div>
           </div>
 
-          <div class="panel">
-            <div class="panel-heading"><h2>Describe it</h2><span class="optional">Optional</span></div>
+          <details class="panel more-panel" id="more-details"><summary><strong>More symptom details</strong><span class="optional">Optional · tap to expand</span></summary><div class="more-content">
             <fieldset class="choice-field"><legend>What does the dullness feel like?</legend><div id="quality-choices" class="chips"></div></fieldset>
             <fieldset class="choice-field"><legend>Where do you feel it?</legend><div id="location-choices" class="chips"></div></fieldset>
             <fieldset class="choice-field"><legend>Other symptoms</legend><div id="symptom-choices" class="chips"></div></fieldset>
+            <div class="custom-factor-add"><label class="field-label" for="new-symptom">Add a custom symptom</label><div class="inline-action"><input id="new-symptom" type="text" maxlength="60" placeholder="e.g. Trouble concentrating"><button class="btn btn-secondary" type="button" id="add-symptom">Add symptom</button></div><p class="feedback" id="symptom-feedback" role="status"></p></div>
             <fieldset class="choice-field"><legend>Possible contributing factors</legend><div id="trigger-choices" class="chips"></div></fieldset>
             <div class="custom-factor-add">
               <label class="field-label" for="new-factor">Add your own contributing factor</label>
@@ -88,11 +92,12 @@
               <input type="datetime-local" id="episode-end-at">
               <p class="explain">Start time is recorded under “When?”. Episode duration is calculated from check-in and check-out times.</p>
             </div>
-            <label class="field-label" for="medication">Medication / treatment</label>
+            <label class="field-label" for="medication">Medication / treatment (optional diary field)</label>
             <input id="medication" type="text" maxlength="160" placeholder="Name, dose and time (if relevant)">
             <label class="field-label" for="notes">Notes</label>
             <textarea id="notes" rows="3" maxlength="3000" placeholder="What were you doing? Anything unusual? How did it change?"></textarea>
-          </div>
+          </div></details>
+          <p class="explain form-hint" id="checkin-link-hint"></p>
           <p class="explain form-hint">Use “Save check-in” for a single observation, or “Check in · Start episode” above to save this same information as a timed episode.</p>
           <div class="form-actions"><button class="btn btn-primary" id="save-btn" type="submit">Save check-in</button><button class="btn btn-secondary" id="episode-start-form" type="button">Check in · Start episode</button><button class="btn btn-ghost" id="cancel-edit" type="button" hidden>Cancel edit</button></div>
           <p id="save-feedback" class="feedback" role="status" aria-live="polite"></p>
@@ -111,7 +116,7 @@
 
       <section id="view-insights" class="view" hidden>
         <div class="panel">
-          <div class="panel-heading"><h2>30-day overview</h2><span class="pill">Rolling 30 days</span></div>
+          <div class="panel-heading"><h2>Symptom overview</h2><select id="insights-range" aria-label="Insights time range" class="range-select"><option value="7">7 days</option><option value="30" selected>30 days</option><option value="90">90 days</option></select></div>
           <p class="explain">These summaries reflect what you logged, not symptom-free days. Missing days are not treated as zero.</p>
           <div class="stats-grid">
             <div class="stat"><strong id="stat-entries">0</strong><span>Symptom entries</span></div>
@@ -121,12 +126,23 @@
           </div>
           <h3>Headache episodes over the last 30 days</h3>
           <div class="stats-grid"><div class="stat"><strong id="stat-episodes">0</strong><span>Episodes started</span></div><div class="stat"><strong id="stat-episode-duration">—</strong><span>Average completed duration</span></div></div>
-          <h3>Intensity over the last 14 days</h3>
+          <p class="explain" id="compare-periods"></p>
+          <h3 id="trend-heading">Intensity trend</h3>
           <div class="legend"><span><i class="dot headache-dot"></i> Headache</span><span><i class="dot dullness-dot"></i> Dullness</span></div>
           <div id="trend-chart" class="chart" role="img" aria-label="14-day recorded symptom intensity trend"></div>
-          <p class="chart-note">Daily highest reported intensity. Gaps mean no entry was recorded.</p>
+          <p class="chart-note" id="trend-note">Daily highest reported intensity. Gaps mean no entry was recorded.</p>
           <h3>Common recorded factors</h3>
           <div id="top-triggers" class="factor-list"></div>
+          <h3>Recorded factors and headache intensity</h3>
+          <div id="factor-associations" class="association-list"></div>
+          <p class="chart-note">Exploratory comparisons among days you logged. These are not evidence that a factor caused your symptoms; unrecorded days and overlapping factors can bias comparisons.</p>
+        </div>
+        <div class="panel">
+          <div class="panel-heading"><h2>Symptom calendar</h2><span class="pill">Logged days only</span></div>
+          <div class="calendar-controls"><button class="btn btn-ghost" type="button" id="cal-prev" aria-label="Previous month">‹</button><strong id="cal-month"></strong><button class="btn btn-ghost" type="button" id="cal-next" aria-label="Next month">›</button></div>
+          <div class="calendar-grid" id="calendar-grid"></div>
+          <div class="calendar-key"><span><i class="cal-key-head"></i>Headache</span><span><i class="cal-key-dull"></i>Dullness only</span><span><i class="cal-key-well"></i>Logged symptom-free</span><span><i class="cal-key-unknown"></i>Not logged</span></div>
+          <p id="calendar-details" class="explain"></p>
         </div>
       </section>
 
@@ -134,6 +150,17 @@
         <div class="panel">
           <div class="panel-heading"><h2>Your data</h2><span class="pill">No account</span></div>
           <p class="explain">Your entries are saved in this app’s browser storage on this iPhone. The app does not send symptom data to a server. Removing the app, clearing website data or changing devices may erase your history.</p>
+          <h3>GP report (PDF)</h3>
+          <p class="explain">Create a local 30- or 90-day summary with trends, recorded symptoms, episodes and gaps in the diary. Nothing is uploaded.</p>
+          <div class="inline-action"><select id="report-range" aria-label="Report period"><option value="30">Last 30 days</option><option value="90">Last 90 days</option></select><button class="btn btn-primary" id="export-pdf" type="button">Create PDF report</button></div>
+          <h3>Check-in reminders</h3>
+          <p class="explain">Optional reminders appear <strong>when this app is open or reopened</strong>. iPhone web apps cannot schedule reliable background alerts without a push-notification service; this version uses no server.</p>
+          <label class="field-label" for="daily-reminder">Daily check-in reminder</label>
+          <select id="daily-reminder"><option value="off">Off</option><option value="on">On (show in the app if not logged today)</option></select>
+          <label class="field-label" for="reminder-time">Remind me after</label><input type="time" id="reminder-time" value="18:00">
+          <label class="field-label" for="episode-reminder">Active episode reminder</label>
+          <select id="episode-reminder"><option value="0">Off</option><option value="60">After 1 hour</option><option value="120">After 2 hours</option><option value="240">After 4 hours</option></select>
+          <button class="btn btn-secondary full-width" id="save-reminders" type="button">Save reminder preferences</button>
           <h3>Back up and export</h3>
           <p class="explain">Export JSON regularly to keep a restorable backup. CSV is useful for spreadsheets or sharing a diary with a clinician.</p>
           <div class="stacked-actions"><button type="button" id="export-json" class="btn btn-primary">Export JSON backup</button><button type="button" id="export-csv" class="btn btn-secondary">Export all entries CSV</button></div>
@@ -145,6 +172,7 @@
           <h3>My contributing factors</h3>
           <p class="explain">Manage factors you added. Removing a factor from the choices keeps it in older entries where you used it.</p>
           <div id="custom-factor-list" class="saved-factor-list"></div>
+          <h3>My custom symptoms</h3><p class="explain">Remove custom symptom choices without changing older check-ins.</p><div id="custom-symptom-list" class="saved-factor-list"></div>
           <h3>Delete local data</h3>
           <button type="button" id="clear-data" class="btn btn-danger">Delete all check-ins and episodes</button>
           <p id="data-feedback" role="status" aria-live="polite" class="feedback"></p>

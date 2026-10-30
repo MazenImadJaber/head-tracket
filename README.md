@@ -1,55 +1,45 @@
-# HeadTrack v4 – iPhone headache and head dullness diary
+# HeadTrack v5 — private iPhone headache and head dullness tracker
 
-A private, offline-friendly progressive web app using plain HTML, CSS and JavaScript. No account, build step or server database is needed. Entries are stored on the device running the app.
+A standalone, offline-capable web app (PWA). Written in HTML, CSS and JavaScript. It stores symptom entries on your device in the **same `headtrack.entries.v1` localStorage collection used by v4**. No account, server database or build tool required.
 
-## How the unified entries work
+## What's new in v5
 
-**Check-ins and timed headache episodes now use exactly the same symptom form and storage collection.** Every entry can record:
+1. **Progress check-ins for timed episodes.** Start an episode using the same form as a check-in. While it is active, every new check-in is automatically linked to that episode (`episodeId`). The episode remains a single entry containing the starting symptom snapshot, start time and check-out time; linked check-ins retain their own full symptom fields. History shows a progression chart and linked timestamps. Editing or deleting an episode does not delete the linked check-in entries (deletion unlinks them).
+2. **Symptom calendar.** A monthly view distinguishes a day with headache, a day with dullness but no headache, a day with only explicit 0/0 readings, and an unlogged day. A new quick-action logs **no symptoms right now**, rather than declaring an entire day symptom-free. A day's highest recorded symptoms determine its calendar colour.
+3. **Expanded symptoms.** More locations and sensations, plus add/remove custom associated symptoms. Custom symptoms persist in the device and JSON backups. All detailed fields are optional under *More symptom details* for faster logging.
+4. **Insights for 7, 30 or 90 days.** Daily peaks (or weekly peaks at 90 days), period comparison, missing-days counts, and cautiously labelled exploratory averages for factors with enough logged comparison days.
+5. **30- and 90-day PDF summaries.** Generated entirely in the browser, available from the Data tab. Summaries include documented headache and dullness days, missing days, average intensity, episode counts and durations, a trend chart, common factors/symptoms, episodes and recent check-ins. On an iPhone use the Share sheet to **Save to Files**. PDF reports do not replace restorable JSON backups.
+6. **Opt-in in-app reminders.** A daily check-in prompt after a chosen time and an active-episode prompt after 1, 2 or 4 hours. These appear only when the app is open or when you reopen it. **Not background/push alerts**: iOS PWAs cannot reliably schedule background reminders without a push-capable service. All reminders are off by default.
 
-- Headache and head dullness intensity (separate 0–10 scales)
-- Date/time, qualities, location, accompanying symptoms and contributing factors
-- Impact on activity, medication/treatment and notes
-- Duration (manual for a simple check-in; calculated from start and finish for a timed episode)
-- A record type (`checkin` or `episode`) and, for timed episodes, an optional check-out timestamp
+Medication/treatment fields from earlier versions are **retained for backwards compatibility**, but there is no new medication effectiveness analysis.
 
-**Starting an episode:** On the **Log** tab, fill out the symptom form and tap **Check in · Start episode** (either near the top or at the bottom of the form). This creates **one entry**, immediately, containing all those details. The actual time you tap the button is the episode start time. The timer keeps running while the app is closed.
+## Install or update (GitHub Pages)
 
-**Ending an episode:** Tap **Check out · End episode**. HeadTrack adds the finish time and calculated duration **to the same entry**; it does not create a second record. You can make additional ordinary check-ins while an episode is active.
+1. **From your existing v4 app, export a JSON backup first** using Data → Export JSON backup.
+2. Extract the ZIP. Upload the **contents** of the `headtrack` folder to the root of your existing GitHub repository, overwriting the old files. Keep the **same GitHub Pages address** and do not uninstall your iPhone Home Screen app.
+3. On iPhone open the installed app again after publishing. If an older version is still visible, close it fully and reopen it while connected to the internet; its service-worker cache is versioned `headtrack-v5`.
+4. Check History. All prior entries and episodes should remain. Create a new v5 JSON backup.
 
-**Editing:** In **History**, both timed episodes and simple check-ins appear in one list. Tap **Edit** to modify the same symptoms. For an episode, you can also correct its start and finish times or leave the finish blank while it is still active. Missing scores from old v3 episodes are shown as **— (not recorded)**, not incorrectly turned into zero, unless you actually move a score slider during editing.
+For new installs, Settings → Pages → Deploy from `main` at `/ (root)`, then open the repository's GitHub Pages HTTPS URL in Safari → Share → Add to Home Screen.
 
-**Exports:** The **Data** tab provides a single CSV export for **all** entries, with an entry type and episode start/end timestamps. The JSON backup contains the same unified entries collection and custom factors. Uploading a backup merges records by ID, after a confirmation.
+For local preview on a desktop, run `python3 -m http.server 8000` inside `headtrack` and open `http://localhost:8000`. Keep `report.js` alongside `app.js`.
 
-## Updating from v3
+## Backups and compatibility
 
-1. **Export a JSON backup** from your currently installed HeadTrack v3 **before** updating.
-2. Replace the existing files at **the same GitHub Pages address** with the files in this package. Do not uninstall the Home Screen app or change its URL.
-3. Reopen or refresh HeadTrack. Existing v3 symptom check-ins and timed episodes are automatically merged into a single entry collection. Old episode start/end times and notes are preserved. Scores that v3 never recorded are kept blank.
-4. Review **History**, and create a new backup in the v4 format. If necessary, use **Data → Upload / restore a backup** to import a v3 JSON backup.
+- JSON backups include **unified entries**, custom contributing factors and custom symptoms. Old v1–v4 backups can still be imported, including migration of separate v3 episode records.
+- Imports merge by entry ID with confirmation; identical IDs in a backup replace the stored version. Existing device entries otherwise remain.
+- `episodeId` is optional on regular check-ins, so imported v4 entries work unchanged. Legacy episodes have no retroactively fabricated progress data.
+- CSV exports include the `episodeId` linkage column. Use JSON for recovery, not CSV or PDF.
+- Reminder preferences are device-specific and **not** included in a backup.
 
-Backups from v1, v2, v3 and v4 can be imported. v3 exports had a separate `episodes` array; v4 converts those episodes into regular entries. Import is performed on-device and does not upload the file to a remote server. Repeat imports of an older backup use stable episode IDs so old episodes are not duplicated.
+## Privacy, limitations and medical guidance
 
-## Installing on iPhone using GitHub Pages
-
-1. Extract the ZIP. In a GitHub repository, place **the files inside** the `headtrack` folder at the repository root.
-2. Select **Settings → Pages → Deploy from a branch**, set `main` and `/ (root)`, and save.
-3. Open the HTTPS Pages URL on your iPhone in Safari, choose **Add to Home Screen**, and enable **Open as Web App** if shown.
-4. Launch from the Home Screen. The app will be offline-capable after its resources have been cached over HTTPS.
-
-For a quick preview on a computer, run `python3 -m http.server 8000` in the `headtrack` folder and visit `http://localhost:8000`.
-
-## Privacy and limitations
-
-- GitHub Pages hosts **only the app files**; it does not receive your symptom records. Your data stays in the browser storage of that specific installation. A public GitHub repository makes the app code public, not your records.
-- Browser storage does not synchronise automatically between Safari and an installed Home Screen app. Use the same installation for logging.
-- Clearing web app data, uninstalling it or changing phones can erase entries. Save JSON backups regularly to a safe location such as Files/iCloud Drive. CSV is useful for review but is **not** a restorable backup.
-- Data in local storage is not end-to-end encrypted by HeadTrack. Anyone able to access your unlocked device could read it. HeadTrack is a diary, not a medical diagnostic tool.
-- Automatic tracking captures the start-of-episode symptom snapshot. If your symptoms change during an episode, make additional check-ins or edit the episode's fields later; the app does not independently measure your symptoms.
+- Github Pages hosts app code only; symptom information remains in this specific app installation on-device. The installed Home Screen app and Safari can have separate storage.
+- Clearing website data, uninstalling the PWA or changing devices can erase data. Export JSON routinely to a protected location.
+- No automatic background sync. Data in local storage is not encrypted by this app.
+- The report is descriptive, not diagnostic. Associations between potential factors and symptoms are **not causal evidence**; missing check-ins are not normal/zero scores.
+- If a headache is sudden and unusually severe, or accompanied by new neurological symptoms, get urgent medical assessment rather than relying on the diary.
 
 ## Files
 
-- `index.html` – interface
-- `app.js` – unified records, migration, editing, chart, import/export
-- `styles.css` – mobile styles
-- `sw.js` – offline cache (`headtrack-v4`)
-- `manifest.webmanifest` and icons – installable Home Screen app
+`index.html` (interface), `styles.css` (mobile design), `app.js` (diary data, insights, migration and reminders), `report.js` (offline PDF generator), `sw.js` (versioned offline service worker), manifest and icons.
