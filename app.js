@@ -5,6 +5,16 @@
   const EPISODES_KEY = 'headtrack.episodes.v1';
   const SYMPTOMS_KEY = 'headtrack.customSymptoms.v1';
   const REMINDERS_KEY = 'headtrack.reminders.v1';
+  // Built-in 24-hour exposure prompts adapted from Migraine & Headache Australia.
+  const FACTORS24 = [
+    ['Stress & routine',['Emotional stress','High mental workload','Change in usual routine']],
+    ['Sleep & physical',['Too little / broken sleep','More sleep than usual','Strenuous exercise','Skipped or delayed meal','Less fluids than usual']],
+    ['Food & drinks',['Change in caffeine','Alcohol','Unusual food or meal']],
+    ['Environment',['Bright light or prolonged screens','Strong smells, smoke or perfume','Loud noise','Weather or pressure change']],
+    ['Other',['Hormonal change (if applicable)']]
+  ];
+  const MIGRAINE_FIELDS=['sided','pulsating','activity','nausea','light','sound','aura'];
+  const MIGRAINE_ALLOWED={sided:['one','both','other','unsure'],pulsating:['yes','no','unsure'],activity:['yes','no','unsure'],nausea:['yes','no','unsure'],light:['yes','no','unsure'],sound:['yes','no','unsure'],aura:['yes','no','unsure']};
   const options = {
     quality: ['Foggy', 'Heavy', 'Pressure', 'Numb / muted', 'Hazy', 'Throbbing', 'Tightness', 'Pulsating', 'Other'],
     location: ['Forehead', 'Temples', 'Behind eyes', 'Back of head', 'Top of head', 'One side', 'Whole head', 'Jaw', 'Unsure'],
@@ -12,9 +22,9 @@
     trigger: ['Poor sleep', 'Stress', 'Screen time', 'Dehydration', 'Missed meal', 'Exercise', 'Caffeine change', 'Unsure']
   };
   const labels = {
-    log: ['How are you feeling?', 'Record your symptoms as a quick check-in or a timed headache episode.'],
+    log: ['Migraine review diary', 'Log headaches and review the preceding 24 hours for your doctor.'],
     history: ['Symptom history', 'Review all symptom records in one place.'],
-    insights: ['Patterns over time', 'See what you have recorded, without interpreting missing days as symptom-free.'],
+    insights: ['Patterns and 24-hour factors', 'Explore what you recorded, without assigning causes or a diagnosis.'],
     data: ['Your diary, your data', 'Back up, export and restore your entries.']
   };
   const $ = id => document.getElementById(id);
@@ -65,6 +75,16 @@
     }
     return [...new Set(vals.filter(v=>typeof v==='string' && options[key].includes(v)))];
   }
+  const factor24Keys = () => [...FACTORS24.flatMap(g=>g[1]),...customFactors];
+  function clean24(x){
+    if(!x||typeof x!=='object'||Array.isArray(x))return {};
+    return Object.fromEntries(Object.entries(x).slice(0,150).map(([name,value])=>[cleanFactor(name),value])
+      .filter(([name,value])=>name&&['yes','no','unsure'].includes(value)));
+  }
+  function cleanMigraine(x){
+    const obj=x&&typeof x==='object'?x:{};
+    return Object.fromEntries(MIGRAINE_FIELDS.map(k=>[k,MIGRAINE_ALLOWED[k].includes(obj[k])?obj[k]:'']));
+  }
   const triggerChoices = () => [...options.trigger,...customFactors];
   const symptomChoices = () => [...options.symptom,...customSymptoms];
   const uniqueSymptoms = values => {
@@ -95,6 +115,7 @@
       location: listValid(x.location,'location'),
       symptom: listValid(x.symptom,'symptom'),
       trigger: listValid(x.trigger,'trigger'),
+      pre24:clean24(x.pre24),migraine:cleanMigraine(x.migraine),
       duration: type==='episode' ? (end===null?null:Math.round((end-start)/60000)) : manualDuration,
       impact: ['0','1','2','3'].includes(String(x.impact)) ? String(x.impact) : '',
       medication: asString(x.medication,160),
@@ -187,6 +208,7 @@
     persistFactors(cleaned);
     customFactors=cleaned;
     renderChoices('trigger');
+    renderFactor24();
     renderFactorManager();
   }
   function sortEntries() { entries.sort((a,b)=>new Date(b.occurredAt)-new Date(a.occurredAt)); }
@@ -202,8 +224,25 @@
       return `<label class="chip"><input type="checkbox" id="${id}" name="${name}" value="${htmlSafe(s)}" ${selected.has(s)?'checked':''}><span>${htmlSafe(s)}</span></label>`;
     }).join('');
   }
+  function renderFactor24(answers = readFactor24()) {
+    const unknown=Object.keys(answers).filter(k=>!factor24Keys().includes(k));
+    const grouped=[...FACTORS24.map(([n,items])=>[n,items]),...(customFactors.length?[['Your custom factors',customFactors]]:[]),...(unknown.length?[['Previously saved factors',unknown]]:[])];
+    $('factor24-choices').innerHTML=grouped.map(([group,items])=>`<div class="factor24-group"><h3>${htmlSafe(group)}</h3>${items.map(label=>`<div class="factor24-row"><div class="factor24-label">${htmlSafe(label)}</div><div class="factor24-switch" role="group" aria-label="${htmlSafe(label)} during previous 24 hours">${['yes','no','unsure'].map(v=>`<label><input type="radio" name="pre24-${[...factor24Keys(),...unknown].indexOf(label)}" data-factor="${htmlSafe(label)}" value="${v}" ${answers[label]===v?'checked':''}><span>${v==='yes'?'Yes':v==='no'?'No':'Unsure'}</span></label>`).join('')}</div></div>`).join('')}</div>`).join('');
+    update24Count();
+  }
+  function readFactor24(){
+    const obj={};for(const input of document.querySelectorAll('#factor24-choices input:checked'))obj[input.dataset.factor]=input.value;
+    return obj;
+  }
+  function update24Count(){
+    const n=document.querySelectorAll('#factor24-choices input:checked').length;
+    $('factor24-count').textContent=`${n} answered`;
+  }
+  function loadMigraineForm(obj={}){for(const k of MIGRAINE_FIELDS)$('migraine-'+k).value=obj[k]||'';}
+  function readMigraineForm(){return Object.fromEntries(MIGRAINE_FIELDS.map(k=>[k,$('migraine-'+k).value]));}
   function initChoices() {
     for(const name of Object.keys(options))renderChoices(name);
+    renderFactor24({});
   }
   function renderFactorManager() {
     const el=$('custom-factor-list');
@@ -237,16 +276,16 @@
     const field=$('new-factor');
     const factor=cleanFactor(field.value);
     if(!factor){setFeedback('factor-feedback','Enter a contributing factor first.',true);return;}
-    const duplicate=triggerChoices().find(v=>v.toLocaleLowerCase()===factor.toLocaleLowerCase());
+    const duplicate=factor24Keys().find(v=>v.toLocaleLowerCase()===factor.toLocaleLowerCase());
     if(duplicate){
-      for(const el of document.querySelectorAll('input[name="trigger"]'))if(el.value===duplicate)el.checked=true;
-      field.value='';setFeedback('factor-feedback',`“${duplicate}” is already listed and has been selected.`);return;
+      const answers=readFactor24();answers[duplicate]='yes';renderFactor24(answers);
+      field.value='';setFeedback('factor-feedback',`“${duplicate}” is already listed and marked Yes.`);return;
     }
     try {
       if(customFactors.length>=150)throw Error('Maximum of 150 custom factors reached.');
-      updateFactors([...customFactors,factor]);
-      for(const el of document.querySelectorAll('input[name="trigger"]'))if(el.value===factor)el.checked=true;
-      field.value='';setFeedback('factor-feedback',`Added “${factor}” and selected it for this check-in.`);
+      const answers=readFactor24();answers[factor]='yes';
+      updateFactors([...customFactors,factor]);renderFactor24(answers);
+      field.value='';setFeedback('factor-feedback',`Added “${factor}” and marked Yes for this check-in.`);
     }catch(err){setFeedback('factor-feedback',err.message,true);}
   }
   async function removeFactor(index) {
@@ -286,7 +325,9 @@
       id,type,occurredAt,endedAt,episodeId: type==='checkin' ? (entries.find(e=>e.id===id) ? (entries.find(e=>e.id===id).episodeId??null) : (activeEpisode() && Date.parse(occurredAt)>=Date.parse(activeEpisode().occurredAt)-60000 && Date.parse(occurredAt)<=Date.now()+60000 ? activeEpisode().id : null)) : null,
       headache:$('headache').dataset.missing==='true'?null:$('headache').value,
       dullness:$('dullness').dataset.missing==='true'?null:$('dullness').value,
-      quality:checked('quality'),location:checked('location'),symptom:checked('symptom'),trigger:checked('trigger'),
+      quality:checked('quality'),location:checked('location'),symptom:checked('symptom'),
+      trigger:checked('trigger').length?checked('trigger'):(entries.find(e=>e.id===id)?.trigger||[]),
+      pre24:readFactor24(),migraine:readMigraineForm(),
       duration:$('duration').value,impact:$('impact').value,medication:$('medication').value,notes:$('notes').value
     });
   }
@@ -294,6 +335,7 @@
     if(!storageOK){setFeedback('episode-feedback','Cannot save: device storage is unavailable.',true);return;}
     if(activeEpisode()){setFeedback('episode-feedback','A headache episode is already active.',true);return;}
     if($('edit-id').value){setFeedback('episode-feedback','Save or cancel the entry you are editing before starting an episode.',true);return;}
+    if(Number($('headache').value)===0){setFeedback('episode-feedback','Move the headache slider above zero to start a headache episode.',true);return;}
     try {
       // Capture the same full symptom form used for a regular check-in.
       // Use the actual button time, rather than a potentially stale form default.
@@ -319,6 +361,7 @@
   }
   function resetForm() {
     $('entry-form').reset();
+    for(const input of document.querySelectorAll('#entry-form input[type="checkbox"]'))input.checked=false;
     $('edit-id').value='';
     $('occurred-at').value=localDatetime();
     $('entry-heading').textContent='New check-in';
@@ -331,6 +374,8 @@
     for(const s of ['headache','dullness']){delete $(s).dataset.missing;updateSlider(s);}
     renderChoices('trigger');
     renderChoices('symptom');
+    renderFactor24({});loadMigraineForm({});$('legacy-factors-field').hidden=true;
+    $('entry-form').dataset.intent='';
     $('more-details').open=false;
     setFeedback('symptom-feedback','');
     setFeedback('factor-feedback','');
@@ -370,6 +415,7 @@
     }
     if(type==='episode' && d.getTime()>Date.now()+60000){setFeedback('save-feedback','Episode start cannot be in the future.',true);return;}
     if(type==='episode' && end && Date.parse(end)>Date.now()+60000){setFeedback('save-feedback','Episode finish cannot be in the future.',true);return;}
+    if($('entry-form').dataset.intent==='headache' && !$('edit-id').value && Number($('headache').value)===0){setFeedback('save-feedback','Set headache intensity to 1–10, or choose No headache today.',true);return;}
     const item=collectEntry(id,type,d.toISOString(),end);
     try {
       updateEntries([item,...entries.filter(x=>x.id!==id)]);
@@ -389,6 +435,8 @@
     }
     renderChoices('trigger',x.trigger);
     renderChoices('symptom',x.symptom);
+    renderFactor24(x.pre24);loadMigraineForm(x.migraine);
+    $('legacy-factors-field').hidden=!x.trigger.length;
     for(const s of ['quality','location','symptom','trigger'])setChecked(s,x[s]);
     $('duration').value=x.type==='episode'?'':(x.duration??'');
     $('duration-field').hidden=x.type==='episode';
@@ -428,6 +476,11 @@
       if(x.type==='checkin'&&x.episodeId){const ep=entries.find(e=>e.id===x.episodeId&&e.type==='episode');if(ep)details.push(`Progress check-in for ${displayDate(ep.occurredAt)} episode`);}
       if(x.impact!=='')details.push(`Activity impact: ${['None','Mild','Moderate','Severe'][Number(x.impact)]}`);
       if(x.medication)details.push(`Medication: ${htmlSafe(x.medication)}`);
+      const exposed=Object.entries(x.pre24||{}).filter(([k,v])=>v==='yes').map(([k])=>k);
+      if(exposed.length)details.push(`Previous 24h (Yes): ${htmlSafe(exposed.join(', '))}`);
+      if(Object.values(x.pre24||{}).length)details.push(`${Object.keys(x.pre24).length} 24h questions answered`);
+      const positive=Object.entries(x.migraine||{}).filter(([k,v])=>v==='yes').map(([k])=>({pulsating:'Throbbing',activity:'Movement worsens',nausea:'Nausea',light:'Light-sensitive',sound:'Sound-sensitive',aura:'Possible aura'}[k]||k));
+      if(positive.length)details.push(`Headache features: ${htmlSafe(positive.join(', '))}`);
       return `<article class="entry-card">
           <div class="entry-head"><div><div class="entry-date">${displayDate(x.occurredAt)}</div><div class="entry-time">${x.type==='episode'?'Episode started':'Check-in'} · ${displayTime(x.occurredAt)}${x.type==='episode'?(x.endedAt?' · Completed':' · Ongoing'):''}</div></div>
           <div class="scores"><span class="mini-score" title="Headache intensity">Pain ${x.headache??'—'}</span><span class="mini-score dull" title="Head dullness intensity">Dull ${x.dullness??'—'}</span></div></div>
@@ -454,8 +507,22 @@
     }
     return days;
   }
+  function render24Insights(recent){
+    // A headache 'start' is an episode start or standalone headache entry; linked progress entries are excluded.
+    const headache=recent.filter(e=>e.headache>0 && (e.type==='episode'||!e.episodeId));
+    const controls=recent.filter(e=>e.type==='checkin'&&!e.episodeId&&e.headache===0);
+    const tracked=[...new Set([...factor24Keys(),...recent.flatMap(e=>Object.keys(e.pre24||{}))])];
+    const rows=tracked.map(name=>{
+      const summary=arr=>{const known=arr.filter(e=>['yes','no'].includes(e.pre24?.[name]));return {yes:known.filter(e=>e.pre24[name]==='yes').length,total:known.length};};
+      return {name,head:summary(headache),clear:summary(controls)};
+    }).filter(r=>r.head.total||r.clear.total).sort((a,b)=>b.head.yes-a.head.yes||b.head.total-a.head.total);
+    const el=$('factor24-insights');
+    if(!rows.length){el.innerHTML='<p class="empty-factors">No Yes/No 24-hour answers yet. Start with a headache entry; also log some no-headache days for context.</p>';return;}
+    el.innerHTML=`<div class="factor24-table-wrap"><table class="factor24-table"><thead><tr><th>Factor in previous 24h</th><th>Headache starts</th><th>No-headache entries</th></tr></thead><tbody>${rows.map(r=>`<tr><td>${htmlSafe(r.name)}</td><td>${r.head.total?`${r.head.yes}/${r.head.total}`:'—'}</td><td>${r.clear.total?`${r.clear.yes}/${r.clear.total}`:'—'}</td></tr>`).join('')}</tbody></table></div><p class="hint-tiny">Each fraction is Yes / (Yes + No). Unsure, unanswered and historic v5 choices are excluded. Repeated entries on the same day can still bias this table.</p>`;
+  }
   function renderInsights() {
     const n=Number($('insights-range').value)||30,recent=periodEntries(n),prior=periodEntries(n,1),summaries=daySummary(recent);
+    render24Insights(recent);
     $('stat-entries').textContent=recent.length;
     $('stat-headache-days').textContent=[...summaries.values()].filter(x=>x.headache>0).length;
     $('stat-dullness-days').textContent=[...summaries.values()].filter(x=>x.dullness>0).length;
@@ -542,8 +609,10 @@
   function buildCsv() {
     const fields=['type','episodeId','occurredAt','endedAt','headache','dullness','quality','location','symptom','trigger','duration','impact','medication','notes'];
     const header=['Entry type','Linked episode ID','Check-in / start (ISO)','Check-out / finish (ISO)','Headache (0-10)','Dullness (0-10)','Dullness qualities','Location','Other symptoms','Possible factors','Duration (minutes)','Activity impact (0-3)','Medication / treatment','Notes'];
-    const rows=entries.map(e=>fields.map(key=>csvEscape(e[key])).join(','));
-    return '\ufeff'+[header.map(csvEscape).join(','),...rows].join('\r\n');
+    const newer=['24h yes','24h no','24h unsure','Pain sides','Pulsating','Worse with activity','Nausea','Light sensitivity','Sound sensitivity','Aura'];
+    const extra=e=>[...['yes','no','unsure'].map(val=>csvEscape(Object.entries(e.pre24||{}).filter(([k,v])=>v===val).map(([k])=>k))),...MIGRAINE_FIELDS.map(k=>csvEscape(e.migraine?.[k]||''))];
+    const rows=entries.map(e=>[...fields.map(key=>csvEscape(e[key])),...extra(e)].join(','));
+    return '\ufeff'+[[...header,...newer].map(csvEscape).join(','),...rows].join('\r\n');
   }
   async function exportFile(filename,content,mime) {
     const blob=new Blob([content],{type:mime});
@@ -561,7 +630,7 @@
     if(!file)return;
     try {
       const raw=JSON.parse(await file.text());
-      if(!raw||raw.format!=='headtrack-backup'||![1,2,3,4,5].includes(raw.version)||!Array.isArray(raw.entries))throw Error('This is not a valid HeadTrack JSON backup.');
+      if(!raw||raw.format!=='headtrack-backup'||![1,2,3,4,5,6].includes(raw.version)||!Array.isArray(raw.entries))throw Error('This is not a valid HeadTrack JSON backup.');
       if(raw.version>=2&&!Array.isArray(raw.customFactors))throw Error('The backup has an invalid custom factor list.');
       if(raw.entries.length>50000)throw Error('This backup contains too many entries.');
       if(raw.version===3&&!Array.isArray(raw.episodes))throw Error('The backup has an invalid episode list.');
@@ -570,8 +639,8 @@
       const converted=raw.version===3?migrateLegacyEpisodes(raw.episodes,imported):[];
       if(imported.length+converted.length>50000)throw Error('This backup contains too many records.');
       const fromBackup=raw.version>=2?raw.customFactors:imported.flatMap(e=>e.trigger.filter(t=>!isBuiltInFactor(t)));
-      if(raw.version===5 && !Array.isArray(raw.customSymptoms))throw Error('The backup has an invalid custom symptoms list.');
-      const nextSymptoms=uniqueSymptoms([...customSymptoms,...(raw.version===5?raw.customSymptoms:imported.flatMap(e=>e.symptom.filter(t=>!options.symptom.includes(t))))]);
+      if(raw.version>=5 && !Array.isArray(raw.customSymptoms))throw Error('The backup has an invalid custom symptoms list.');
+      const nextSymptoms=uniqueSymptoms([...customSymptoms,...(raw.version>=5?raw.customSymptoms:imported.flatMap(e=>e.symptom.filter(t=>!options.symptom.includes(t))))]);
       const nextFactors=uniqueFactors([...customFactors,...fromBackup]);
       const combined=new Map(entries.map(e=>[e.id,e]));
       for(const e of [...imported,...converted])combined.set(e.id,e);
@@ -633,6 +702,20 @@
   document.querySelectorAll('.tab').forEach(tab=>tab.addEventListener('click',()=>showTab(tab.dataset.tab)));
   for(const id of ['headache','dullness'])$(id).addEventListener('input',()=>{delete $(id).dataset.missing;updateSlider(id);});
   $('entry-form').addEventListener('submit',handleSave);
+  $('factor24-choices').addEventListener('change',update24Count);
+  $('factor24-clear').addEventListener('click',()=>renderFactor24({}));
+  $('log-headache').addEventListener('click',()=>{
+    resetForm();$('entry-form').dataset.intent='headache';
+    $('entry-heading').textContent='New headache check-in';
+    setFeedback('save-feedback','Set headache intensity to at least 1, then review the headache features and the previous 24 hours.');
+    $('headache').scrollIntoView({behavior:'smooth',block:'center'});
+  });
+  $('log-noheadache').addEventListener('click',()=>{
+    resetForm();$('entry-form').dataset.intent='noheadache';
+    $('entry-heading').textContent='No headache today';
+    setFeedback('save-feedback','Record which factors did or did not happen in the previous 24 hours, then save. Missing factors remain unanswered.');
+    $('factor24-panel').scrollIntoView({behavior:'smooth',block:'start'});
+  });
   $('episode-start').addEventListener('click',startEpisode);
   $('episode-start-form').addEventListener('click',startEpisode);
   $('episode-stop').addEventListener('click',stopEpisode);
@@ -670,7 +753,7 @@
     if(target.dataset.action==='delete')deleteItem(target.dataset.id);
   });
   $('export-json').addEventListener('click',()=>{
-    const data=JSON.stringify({format:'headtrack-backup',version:5,exportedAt:new Date().toISOString(),customFactors,customSymptoms,entries},null,2);
+    const data=JSON.stringify({format:'headtrack-backup',version:6,exportedAt:new Date().toISOString(),customFactors,customSymptoms,entries},null,2);
     exportFile(`headtrack-backup-${dateKey(new Date())}.json`,data,'application/json');
   });
   $('export-csv').addEventListener('click',()=>exportFile(`headtrack-entries-${dateKey(new Date())}.csv`,buildCsv(),'text/csv;charset=utf-8'));

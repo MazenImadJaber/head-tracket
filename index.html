@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#172946">
-  <meta name="description" content="A private, offline-friendly diary for headaches and head dullness.">
+  <meta name="description" content="A private migraine assessment diary with 24-hour factor questions.">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="HeadTrack">
@@ -12,7 +12,7 @@
   <link rel="icon" href="./icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="./icon-192.png">
   <link rel="stylesheet" href="./styles.css">
-  <title>HeadTrack · symptom diary</title>
+  <title>HeadTrack · migraine review diary</title>
   <script src="./report.js" defer></script>
   <script src="./app.js" defer></script>
 </head>
@@ -21,11 +21,11 @@
     <header class="app-header">
       <div class="header-top">
         <div class="brand-mark" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 15c-2-2-2-7 1-9s8-2 11 2 1 9-2 10c-1 0-2 1-2 3H9c0-3-2-4-3-6Z"/><path d="M8 12h3l2-3 2 6 1-2h2"/></svg></div>
-        <div><div class="brand-name">HeadTrack</div><div class="brand-subtitle">Private symptom diary</div></div>
+        <div><div class="brand-name">HeadTrack</div><div class="brand-subtitle">Migraine review diary</div></div>
         <span class="privacy-tag" title="No account or server for your entries">On-device</span>
       </div>
-      <h1 id="page-title">How are you feeling?</h1>
-      <p id="page-desc">Log symptoms as a quick check-in or time an episode with the same details.</p>
+      <h1 id="page-title">Migraine review diary</h1>
+      <p id="page-desc">Record a headache, its features and what happened in the previous 24 hours.</p>
     </header>
 
     <nav class="tabbar" aria-label="Main navigation">
@@ -38,6 +38,13 @@
     <div class="reminder-banner" id="reminder-banner" hidden><span id="reminder-message"></span><button type="button" id="dismiss-reminder" class="link-button">Dismiss</button></div>
     <main>
       <section id="view-log" class="view active" aria-labelledby="page-title">
+        <section class="panel migraine-intro">
+          <span class="eyebrow">FOR YOUR DOCTOR'S REVIEW</span>
+          <h2>Was there a headache?</h2>
+          <p class="explain">Record symptoms and possible exposures in the <strong>24 hours before the headache started</strong>. A record without headache is useful too, because those same factors can happen on ordinary days.</p>
+          <div class="entry-cta"><button type="button" id="log-headache" class="btn btn-primary">I had a headache</button><button type="button" id="log-noheadache" class="btn btn-secondary">No headache today</button></div>
+          <p class="hint-tiny">Use the form below to review the features and 24-hour factors. The diary does not diagnose migraine.</p>
+        </section>
         <section class="panel episode-panel" aria-labelledby="episode-heading">
           <div class="panel-heading"><h2 id="episode-heading">Headache episode</h2><span class="pill" id="episode-status">Not active</span></div>
           <div id="episode-idle">
@@ -58,7 +65,7 @@
           <input type="hidden" id="edit-id">
           <div class="panel">
             <div class="panel-heading"><h2 id="entry-heading">New check-in</h2><span class="pill">0–10 scales</span></div>
-            <label class="field-label" for="occurred-at">When?</label>
+            <label class="field-label" for="occurred-at">Headache onset / check-in time</label>
             <input type="datetime-local" id="occurred-at" required>
             <div class="scale-block">
               <div class="scale-heading"><div><label for="headache">Headache intensity</label><small>0 = none · 10 = worst imaginable</small></div><output id="headache-val" for="headache" class="score">0</output></div>
@@ -71,20 +78,56 @@
               <div class="scale-ends"><span>None</span><span>Very noticeable</span></div>
             </div>
           </div>
+          <section class="panel" id="migraine-review-panel">
+            <div class="panel-heading"><h2>Headache features</h2><span class="pill">For diagnosis review</span></div>
+            <p class="explain">Record what happened <strong>during</strong> your headache, not what you think caused it. Leave unanswered if not sure or not applicable.</p>
+            <div class="review-grid">
+              <label class="review-field">Pain location
+                <select id="migraine-sided"><option value="">Not recorded</option><option value="one">One-sided</option><option value="both">Both sides</option><option value="other">Other / whole head</option><option value="unsure">Not sure</option></select>
+              </label>
+              <label class="review-field">Throbbing or pulsating?
+                <select id="migraine-pulsating"><option value="">Not recorded</option><option value="yes">Yes</option><option value="no">No</option><option value="unsure">Not sure</option></select>
+              </label>
+              <label class="review-field">Worse with everyday movement?
+                <select id="migraine-activity"><option value="">Not recorded</option><option value="yes">Yes</option><option value="no">No</option><option value="unsure">Not sure</option></select>
+              </label>
+              <label class="review-field">Nausea or vomiting?
+                <select id="migraine-nausea"><option value="">Not recorded</option><option value="yes">Yes</option><option value="no">No</option><option value="unsure">Not sure</option></select>
+              </label>
+              <label class="review-field">Sensitivity to light?
+                <select id="migraine-light"><option value="">Not recorded</option><option value="yes">Yes</option><option value="no">No</option><option value="unsure">Not sure</option></select>
+              </label>
+              <label class="review-field">Sensitivity to sound?
+                <select id="migraine-sound"><option value="">Not recorded</option><option value="yes">Yes</option><option value="no">No</option><option value="unsure">Not sure</option></select>
+              </label>
+              <label class="review-field full">Visual, sensory or speech changes before/during headache?
+                <select id="migraine-aura"><option value="">Not recorded</option><option value="yes">Yes — describe in notes</option><option value="no">No</option><option value="unsure">Not sure</option></select>
+              </label>
+            </div>
+            <div id="duration-field" class="clinician-duration"><label class="field-label" for="duration">Headache duration (minutes, if known)</label><input id="duration" type="number" min="0" max="100800" step="1" inputmode="numeric" placeholder="e.g. 180"><p class="hint-tiny">Leave blank if still happening. A timed episode measures this automatically.</p></div>
+          </section>
+          <section class="panel factor24-panel" id="factor24-panel">
+            <div class="panel-heading"><h2>Previous 24 hours</h2><span id="factor24-count" class="pill">0 answered</span></div>
+            <p class="explain">For each factor, select <strong>Yes, No or Unsure</strong> if you can remember. This is a record of an exposure, <strong>not proof that it triggered a headache</strong>. Skip questions you cannot answer.</p>
+            <div class="factor24-legend"><span>YES = happened</span><span>NO = did not happen</span><span>UNSURE = can't recall</span></div>
+            <div id="factor24-choices"></div>
+            <button type="button" class="link-button" id="factor24-clear">Clear 24-hour answers</button>
+            <p class="hint-tiny">Sleep changes, thirst, neck discomfort or food cravings may also be early migraine symptoms rather than causes. The 24-hour window is a diary aid, not a diagnostic test.</p>
+          </section>
 
           <details class="panel more-panel" id="more-details"><summary><strong>More symptom details</strong><span class="optional">Optional · tap to expand</span></summary><div class="more-content">
             <fieldset class="choice-field"><legend>What does the dullness feel like?</legend><div id="quality-choices" class="chips"></div></fieldset>
             <fieldset class="choice-field"><legend>Where do you feel it?</legend><div id="location-choices" class="chips"></div></fieldset>
             <fieldset class="choice-field"><legend>Other symptoms</legend><div id="symptom-choices" class="chips"></div></fieldset>
             <div class="custom-factor-add"><label class="field-label" for="new-symptom">Add a custom symptom</label><div class="inline-action"><input id="new-symptom" type="text" maxlength="60" placeholder="e.g. Trouble concentrating"><button class="btn btn-secondary" type="button" id="add-symptom">Add symptom</button></div><p class="feedback" id="symptom-feedback" role="status"></p></div>
-            <fieldset class="choice-field"><legend>Possible contributing factors</legend><div id="trigger-choices" class="chips"></div></fieldset>
+            <div id="legacy-factors-field" hidden><fieldset class="choice-field"><legend>Previous contributing factors (legacy entries only)</legend><div id="trigger-choices" class="chips"></div></fieldset><p class="explain">These older choices did not specify a 24-hour window. They are kept separately from the new questions.</p></div>
             <div class="custom-factor-add">
-              <label class="field-label" for="new-factor">Add your own contributing factor</label>
-              <div class="inline-action"><input id="new-factor" type="text" maxlength="60" placeholder="e.g. Bruxism or poor posture" autocomplete="off"><button class="btn btn-secondary" type="button" id="add-factor">Add factor</button></div>
+              <label class="field-label" for="new-factor">Add a custom 24-hour factor</label>
+              <div class="inline-action"><input id="new-factor" type="text" maxlength="60" placeholder="e.g. Unusual shift work" autocomplete="off"><button class="btn btn-secondary" type="button" id="add-factor">Add factor</button></div>
               <p id="factor-feedback" class="feedback" role="status" aria-live="polite"></p>
             </div>
             <div class="field-row">
-              <div id="duration-field"><label class="field-label" for="duration">Duration so far (manual, optional)</label><input id="duration" type="number" min="0" max="100800" step="1" inputmode="numeric" placeholder="e.g. 45"></div>
+              
               <div><label class="field-label" for="impact">Impact on activity</label><select id="impact"><option value="">Not recorded</option><option value="0">None</option><option value="1">Mild</option><option value="2">Moderate</option><option value="3">Severe</option></select></div>
             </div>
             <div id="episode-edit-fields" hidden>
@@ -98,7 +141,7 @@
             <textarea id="notes" rows="3" maxlength="3000" placeholder="What were you doing? Anything unusual? How did it change?"></textarea>
           </div></details>
           <p class="explain form-hint" id="checkin-link-hint"></p>
-          <p class="explain form-hint">Use “Save check-in” for a single observation, or “Check in · Start episode” above to save this same information as a timed episode.</p>
+          <p class="explain form-hint">Use “Save check-in” for a single entry or start a timed episode above. You can edit all features and answers later.</p>
           <div class="form-actions"><button class="btn btn-primary" id="save-btn" type="submit">Save check-in</button><button class="btn btn-secondary" id="episode-start-form" type="button">Check in · Start episode</button><button class="btn btn-ghost" id="cancel-edit" type="button" hidden>Cancel edit</button></div>
           <p id="save-feedback" class="feedback" role="status" aria-live="polite"></p>
         </form>
@@ -131,7 +174,11 @@
           <div class="legend"><span><i class="dot headache-dot"></i> Headache</span><span><i class="dot dullness-dot"></i> Dullness</span></div>
           <div id="trend-chart" class="chart" role="img" aria-label="14-day recorded symptom intensity trend"></div>
           <p class="chart-note" id="trend-note">Daily highest reported intensity. Gaps mean no entry was recorded.</p>
-          <h3>Common recorded factors</h3>
+          <h3>24-hour factor review</h3>
+          <p class="explain">This compares <strong>recorded headache starts</strong> with explicitly logged no-headache check-ins. Only answered Yes/No questions contribute. Unknowns and old v5 factors are excluded.</p>
+          <div id="factor24-insights" class="factor24-results"></div>
+          <p class="chart-note">Small samples, recall bias, overlapping factors and missing no-headache days can distort patterns. This is descriptive, not a test for migraine or proof of causation.</p>
+          <h3>Older contributing factor notes</h3>
           <div id="top-triggers" class="factor-list"></div>
           <h3>Recorded factors and headache intensity</h3>
           <div id="factor-associations" class="association-list"></div>
@@ -151,7 +198,7 @@
           <div class="panel-heading"><h2>Your data</h2><span class="pill">No account</span></div>
           <p class="explain">Your entries are saved in this app’s browser storage on this iPhone. The app does not send symptom data to a server. Removing the app, clearing website data or changing devices may erase your history.</p>
           <h3>GP report (PDF)</h3>
-          <p class="explain">Create a local 30- or 90-day summary with trends, recorded symptoms, episodes and gaps in the diary. Nothing is uploaded.</p>
+          <p class="explain">Create a local 30- or 90-day clinician summary of headache features, reported 24-hour factors and gaps in the diary. Nothing is uploaded.</p>
           <div class="inline-action"><select id="report-range" aria-label="Report period"><option value="30">Last 30 days</option><option value="90">Last 90 days</option></select><button class="btn btn-primary" id="export-pdf" type="button">Create PDF report</button></div>
           <h3>Check-in reminders</h3>
           <p class="explain">Optional reminders appear <strong>when this app is open or reopened</strong>. iPhone web apps cannot schedule reliable background alerts without a push-notification service; this version uses no server.</p>
@@ -177,7 +224,8 @@
           <button type="button" id="clear-data" class="btn btn-danger">Delete all check-ins and episodes</button>
           <p id="data-feedback" role="status" aria-live="polite" class="feedback"></p>
         </div>
-        <p class="footer-note">HeadTrack is a personal diary, not a medical diagnostic tool.</p>
+        <p class="footer-note">HeadTrack is a personal diary and cannot confirm or rule out migraine. A sudden extremely severe headache, new weakness or difficulty speaking requires urgent medical assessment.</p>
+        <p class="footer-note">Guidance adapted from <a href="https://www.migraine.org.au/triggers" target="_blank" rel="noopener">Migraine &amp; Headache Australia: Triggers</a> and <a href="https://www.migraine.org.au/headaches_are_migraine" target="_blank" rel="noopener">How can I tell if my headaches are migraine?</a>. Not affiliated with or endorsed by the organisation.</p>
       </section>
     </main>
     <footer>Made for quick, private check-ins · Works offline after installation</footer>

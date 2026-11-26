@@ -1,7 +1,7 @@
 {
-  "name": "HeadTrack – Headache & Dullness Diary",
+  "name": "HeadTrack – Migraine Review Diary",
   "short_name": "HeadTrack",
-  "description": "A private on-device diary for headaches and head dullness.",
+  "description": "A private headache and 24-hour possible trigger diary for clinical review.",
   "id": "./",
   "start_url": "./",
   "scope": "./",

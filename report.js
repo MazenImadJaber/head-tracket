@@ -30,11 +30,22 @@ const HeadTrackReport = (() => {
     function wrap(s,maxChars=94){const out=[];for(const para of String(s||'').split(/\n/)){if(!para.trim()){out.push('');continue;}let row='';for(const word of para.split(/\s+/)){if((row+' '+word).trim().length>maxChars){if(row)out.push(row);row=word;}else row=(row+' '+word).trim();}if(row)out.push(row);}return out;}
     function paragraph(s,size=9.5){for(const a of wrap(s,size>9?93:105)){ensure(16);text(a,LEFT,y,size,'#445971');y-=15;}y-=7;}
     function metricRow(vals){ensure(78);const width=157,gap=15;for(const [i,[value,label]] of vals.entries()){const x=LEFT+i*(width+gap);rect(x,y-55,width,60,'#edf6f5');text(value,x+10,y-20,17,'#14635f',true);text(label,x+10,y-39,8,'#617586');}y-=78;}
-    function listRows(rows,max=100){for(const [a,b] of rows.slice(0,max)){const lines=wrap(String(b),72);ensure(19+15*Math.max(1,lines.length));text(a,LEFT,y,9,'#1f4857',true);for(let i=0;i<lines.length;i++){text(lines[i],155,y-15*i,9,'#495f70');}y-=Math.max(22,lines.length*15+8);line(LEFT,y+4,RIGHT,'#edf1f4',.5);y-=5;}}
+    function listRows(rows,max=100){
+      for(const [a,b] of rows.slice(0,max)){
+        const leftLabel=String(a),wide=leftLabel.length>21;
+        const lines=wrap(String(b),wide?94:71);
+        ensure((wide?36:19)+15*Math.max(1,lines.length));
+        text(leftLabel,LEFT,y,9,'#1f4857',true);
+        const x=wide?LEFT+5:155, top=wide?y-17:y;
+        for(let i=0;i<lines.length;i++)text(lines[i],x,top-15*i,9,'#495f70');
+        y-=Math.max(wide?38:22,(wide?17:0)+lines.length*15+8);
+        line(LEFT,y+4,RIGHT,'#edf1f4',.5);y-=5;
+      }
+    }
     function footer(){line(LEFT,45,RIGHT);text('HeadTrack | Private diary | Not a diagnosis | Blank days are unknown',LEFT,31,7.8,'#81919d');}
     newPage();
     text('HeadTrack',LEFT,y,24,'#145b63',true);y-=25;
-    text('Headache and head dullness - GP summary',LEFT,y,12,'#324e64');y-=24;
+    text('Migraine assessment diary - clinician summary',LEFT,y,12,'#324e64');y-=24;
     text(`Period: ${dKey(from)} to ${dKey(now)}   |   Generated: ${dKey(now)}   |   ${days} days`,LEFT,y,9,'#687b8c');y-=23;line(LEFT,y,RIGHT);y-=30;
     heading('At a glance');
     metricRow([[String(headacheDays),'Headache days'],[String(dullDays),'Dullness days'],[`${byDate.size} / ${days}`,'Days with entries']]);
@@ -63,20 +74,38 @@ const HeadTrackReport = (() => {
     }
     text(`${days===90?'Weekly':'Daily'} peak; gaps indicate no recorded scores.`,LEFT,y-165,8,'#6b7d8d');y-=193;
     ensure(28);text('Headache',LEFT,y,9,'#058c84',true);text('Head dullness',LEFT+110,y,9,'#596cae',true);y-=26;
+    heading('Headache features for clinical review');
+    const onset=filtered.filter(e=>e.headache>0&&(e.type==='episode'||!e.episodeId));
+    const controls=filtered.filter(e=>e.type==='checkin'&&!e.episodeId&&e.headache===0);
+    const symptomKeys=[['sided','Pain sides'],['pulsating','Throbbing / pulsating'],['activity','Worse with activity'],['nausea','Nausea / vomiting'],['light','Light sensitivity'],['sound','Sound sensitivity'],['aura','Possible aura']];
+    listRows(symptomKeys.map(([key,label])=>{
+      const known=onset.filter(e=>e.migraine?.[key]&&e.migraine[key]!=='unsure');
+      const yes=known.filter(e=>e.migraine[key]===(key==='sided'?'one':'yes')).length;
+      const detail=key==='sided'?'one-sided': 'Yes';
+      return [label,`${yes} ${detail} / ${known.length} answered headache starts`];
+    }),symptomKeys.length);
+    heading('Possible exposures in the preceding 24 hours');
+    paragraph('These are reported exposures, not proven migraine triggers. "Unanswered" and "unsure" are not treated as No. Linked progress check-ins are excluded from the comparison.');
+    const factorNames=[...new Set(filtered.flatMap(e=>Object.keys(e.pre24||{})))];
+    if(!factorNames.length)paragraph('No 24-hour exposure questions have been answered in this period. Older contributing-factor checkboxes were not asked as a 24-hour question.');
+    else{
+      const exposureSummary=(items,name)=>{const known=items.filter(e=>['yes','no'].includes(e.pre24?.[name]));return `${known.filter(e=>e.pre24[name]==='yes').length}/${known.length}`;};
+      listRows(factorNames.map(name=>[name,`Headache starts: ${exposureSummary(onset,name)} Yes/known; no-headache: ${exposureSummary(controls,name)} Yes/known`]),factorNames.length);
+    }
     heading('Commonly recorded factors and symptoms');
-    for(const [name,label] of [['trigger','Possible factors'],['symptom','Associated symptoms'],['quality','Sensation'],['location','Location']]){
+    for(const [name,label] of [['trigger','Older unstructured factors'],['symptom','Associated symptoms'],['quality','Sensation'],['location','Location']]){
       const rows=freq(name).slice(0,5).map(([v,n])=>`${v} (${n})`).join(', ');
       ensure(36);text(label,LEFT,y,9.3,'#1b5261',true);y-=15;
       for(const part of wrap(rows||'Not recorded',100)){ensure(16);text(part,LEFT,y,9,'#506576');y-=15;}y-=12;
     }
     heading('Interpretation limitations');
-    paragraph('This report summarises user-entered information, not measured events. A day without entries is unknown, not symptom-free. Recorded contributing factors are not proven triggers. Entries within one episode may repeat the same symptoms. Scores are self-reported.');
+    paragraph('This report cannot diagnose or exclude migraine. Symptoms and headache duration are relevant to clinical assessment; exposure history alone is not diagnostic. A day without entries is unknown, not symptom-free. Triggers may be early symptoms; small samples and incomplete comparison days can mislead. Entries within an episode may repeat symptoms.');
     heading('Episode summary');
     if(!episodes.length)paragraph('No timed episodes were started in this period.');
     else listRows(episodes.slice(0,40).map(e=>[fmtDate(e.occurredAt),`${e.endedAt?'Finished '+fmtDate(e.endedAt):'Ongoing / no checkout'} | Pain ${e.headache??'N/R'}, dullness ${e.dullness??'N/R'} | ${filtered.filter(x=>x.episodeId===e.id).length} progress check-ins`]),40);
     heading('Recent symptom check-ins');
     if(!filtered.length)paragraph('No entries in this period.');
-    else listRows(filtered.slice(0,70).map(e=>[fmtDate(e.occurredAt),`${e.type==='episode'?'Episode':'Check-in'} | Headache: ${e.headache??'N/R'} /10; dullness: ${e.dullness??'N/R'} /10; impact: ${e.impact||'N/R'}${e.notes?' | Note: '+e.notes.slice(0,170):''}`]),70);
+    else listRows(filtered.slice(0,70).map(e=>[fmtDate(e.occurredAt),`${e.type==='episode'?'Episode':'Check-in'} | Pain ${e.headache??'N/R'} /10; dullness ${e.dullness??'N/R'} /10; impact ${e.impact||'N/R'} | 24h Yes: ${Object.entries(e.pre24||{}).filter(([k,v])=>v==='yes').map(([k])=>k).join(', ')||'Not documented'}${e.notes?' | Note: '+e.notes.slice(0,120):''}`]),70);
     footer();pages.push(commands.join('\n'));
     // Small, dependency-free PDF 1.4 serialiser; all streams are printable ASCII.
     const objects=[];

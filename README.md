@@ -1,45 +1,49 @@
-# HeadTrack v5 — private iPhone headache and head dullness tracker
+# HeadTrack v6 — migraine-focused diary for iPhone
 
-A standalone, offline-capable web app (PWA). Written in HTML, CSS and JavaScript. It stores symptom entries on your device in the **same `headtrack.entries.v1` localStorage collection used by v4**. No account, server database or build tool required.
+A standalone, offline-capable progressive web app for recording headaches and possible factors in the **24 hours before a headache**. Based on the *Migraine & Headache Australia* guidance below; it is **not** an official app or a diagnostic test. Your doctor will need the attack history, symptom features and their clinical assessment to confirm or reject migraine.
 
-## What's new in v5
+## New in v6
 
-1. **Progress check-ins for timed episodes.** Start an episode using the same form as a check-in. While it is active, every new check-in is automatically linked to that episode (`episodeId`). The episode remains a single entry containing the starting symptom snapshot, start time and check-out time; linked check-ins retain their own full symptom fields. History shows a progression chart and linked timestamps. Editing or deleting an episode does not delete the linked check-in entries (deletion unlinks them).
-2. **Symptom calendar.** A monthly view distinguishes a day with headache, a day with dullness but no headache, a day with only explicit 0/0 readings, and an unlogged day. A new quick-action logs **no symptoms right now**, rather than declaring an entire day symptom-free. A day's highest recorded symptoms determine its calendar colour.
-3. **Expanded symptoms.** More locations and sensations, plus add/remove custom associated symptoms. Custom symptoms persist in the device and JSON backups. All detailed fields are optional under *More symptom details* for faster logging.
-4. **Insights for 7, 30 or 90 days.** Daily peaks (or weekly peaks at 90 days), period comparison, missing-days counts, and cautiously labelled exploratory averages for factors with enough logged comparison days.
-5. **30- and 90-day PDF summaries.** Generated entirely in the browser, available from the Data tab. Summaries include documented headache and dullness days, missing days, average intensity, episode counts and durations, a trend chart, common factors/symptoms, episodes and recent check-ins. On an iPhone use the Share sheet to **Save to Files**. PDF reports do not replace restorable JSON backups.
-6. **Opt-in in-app reminders.** A daily check-in prompt after a chosen time and an active-episode prompt after 1, 2 or 4 hours. These appear only when the app is open or when you reopen it. **Not background/push alerts**: iOS PWAs cannot reliably schedule background reminders without a push-capable service. All reminders are off by default.
+- **I had a headache** starts a new log and prompts you to adjust headache intensity to 1–10.
+- **Headache features:** one-sided/both, pulsating, aggravated by activity, nausea, sensitivity to light/sound, possible aura. These relate to diagnostic review and are distinct from exposures.
+- **Previous 24 hours:** 16 common exposure prompts in five groups; each has **Yes / No / Unsure / left unanswered**. Records what happened in the 24h before onset, not a causal claim. You can add custom prompts (e.g. shift work).
+- **No headache today:** opens the same form at pain intensity 0 so you can record exposures on control days. This helps put reported factors into context.
+- **Clinician review:** reports show symptom features and factors on headache versus explicitly no-headache entries. Summaries only count Yes/No answers as known; don't treat uncertainty or missing answers as absence.
+- **Compatible:** v1–v5 JSON backups import; existing v5 entries and episodes remain in the same `headtrack.entries.v1` storage collection. Old unstructured factor selections are not retrospectively labelled as 24-hour exposures. JSON exports are **v6**; CSV adds 24-hour answers and headache features. Existing check-ins, episodes, calendar, PDFs and in-app reminders are kept.
 
-Medication/treatment fields from earlier versions are **retained for backwards compatibility**, but there is no new medication effectiveness analysis.
+## Install / update using GitHub Pages
 
-## Install or update (GitHub Pages)
+1. In existing HeadTrack, use **Data → Export JSON backup** and save it to Files or iCloud Drive.
+2. Unzip v6. Copy the **contents of the `headtrack/` folder** into the root of your existing GitHub Pages repository, replacing old files.
+3. Keep the exact same site address and installed iPhone Home Screen app. Reopen it while online to update the versioned offline cache (`headtrack-v6`).
+4. Confirm that older entries are visible in History, then export a fresh v6 backup.
 
-1. **From your existing v4 app, export a JSON backup first** using Data → Export JSON backup.
-2. Extract the ZIP. Upload the **contents** of the `headtrack` folder to the root of your existing GitHub repository, overwriting the old files. Keep the **same GitHub Pages address** and do not uninstall your iPhone Home Screen app.
-3. On iPhone open the installed app again after publishing. If an older version is still visible, close it fully and reopen it while connected to the internet; its service-worker cache is versioned `headtrack-v5`.
-4. Check History. All prior entries and episodes should remain. Create a new v5 JSON backup.
+For first installation, put the files in a GitHub repository, enable **Settings → Pages → Deploy from branch** (`main`, `/root`), then open the HTTPS Pages address in **Safari → Share → Add to Home Screen**.
 
-For new installs, Settings → Pages → Deploy from `main` at `/ (root)`, then open the repository's GitHub Pages HTTPS URL in Safari → Share → Add to Home Screen.
+For a desktop test, run `python3 -m http.server 8000` inside the `headtrack/` folder, then open `http://localhost:8000`.
 
-For local preview on a desktop, run `python3 -m http.server 8000` inside `headtrack` and open `http://localhost:8000`. Keep `report.js` alongside `app.js`.
+## Using it for a diagnosis review
 
-## Backups and compatibility
+- Log when the headache begins, its severity and **headache features**; use a timed episode if useful. For any later observations, progress check-ins can be linked to the episode.
+- Look back to the **24h before onset**, not after pain began. If you do not remember a factor, choose Unsure or leave it unanswered. Recording a headache isn't an obligation to tick every item.
+- On some days **without headache**, use the No headache today workflow and answer the same 24h questions. Otherwise a frequent everyday exposure can wrongly appear to be a trigger.
+- Show your doctor a 30/90-day PDF from the Data tab, or a CSV for a more detailed review.
+- A factor occurring before a headache is not enough to confirm migraine. Sleep changes, cravings, thirst and neck discomfort may sometimes be early migraine symptoms rather than triggers. No combination of items in this app diagnoses migraine.
 
-- JSON backups include **unified entries**, custom contributing factors and custom symptoms. Old v1–v4 backups can still be imported, including migration of separate v3 episode records.
-- Imports merge by entry ID with confirmation; identical IDs in a backup replace the stored version. Existing device entries otherwise remain.
-- `episodeId` is optional on regular check-ins, so imported v4 entries work unchanged. Legacy episodes have no retroactively fabricated progress data.
-- CSV exports include the `episodeId` linkage column. Use JSON for recovery, not CSV or PDF.
-- Reminder preferences are device-specific and **not** included in a backup.
+## Technical and privacy notes
 
-## Privacy, limitations and medical guidance
+- No server or account; personal entries are stored in this app's iPhone browser storage (unencrypted localStorage). GitHub Pages serves only the app code.
+- No automatic sync. Removing the app or clearing site data may erase entries. Regularly export JSON backup.
+- Imports merge by ID, replacing records with matching IDs after user confirmation. Never restore from an untrusted JSON file.
+- Old v5 factors remain in `entry.trigger`; new 24h responses live in `entry.pre24`, and clinical features in `entry.migraine`. Old records are not assigned fabricated "No" answers.
+- Timed episodes, symptom calendar and reminder settings are retained. Reminders only show while the app is open/reopened; they are not background iOS notifications.
+- If headache is sudden and extremely severe or associated with new neurological symptoms, seek urgent medical attention instead of relying on the diary.
 
-- Github Pages hosts app code only; symptom information remains in this specific app installation on-device. The installed Home Screen app and Safari can have separate storage.
-- Clearing website data, uninstalling the PWA or changing devices can erase data. Export JSON routinely to a protected location.
-- No automatic background sync. Data in local storage is not encrypted by this app.
-- The report is descriptive, not diagnostic. Associations between potential factors and symptoms are **not causal evidence**; missing check-ins are not normal/zero scores.
-- If a headache is sudden and unusually severe, or accompanied by new neurological symptoms, get urgent medical assessment rather than relying on the diary.
+## Guidance consulted
 
-## Files
+- <https://www.migraine.org.au/triggers>
+- <https://www.migraine.org.au/understanding_migraine_triggers>
+- <https://www.migraine.org.au/headaches_are_migraine>
+- <https://www.migraine.org.au/diaries>
 
-`index.html` (interface), `styles.css` (mobile design), `app.js` (diary data, insights, migration and reminders), `report.js` (offline PDF generator), `sw.js` (versioned offline service worker), manifest and icons.
+Migraine Australia states that trigger tracking is individual and can be burdensome long-term. You might track for a clinician-agreed period and then review whether continued daily tracking is useful.
