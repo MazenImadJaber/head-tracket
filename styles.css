@@ -88,3 +88,20 @@
 @media(max-width:410px){.factor24-row{align-items:stretch;flex-direction:column;gap:8px}.factor24-switch{flex-basis:auto;width:100%}.factor24-switch span{min-height:37px}.review-grid{grid-template-columns:1fr}.entry-cta{flex-direction:column}}
 
 .clinician-duration{margin-top:16px}.clinician-duration input{max-width:180px}
+
+/* v7: accessible optional dietary checklist, collapsed by default. */
+.food24-details{margin:18px 0 16px;border:1px solid #cbdfe3;border-radius:14px;background:#f5fbfa;overflow:hidden}
+.food24-details>summary{padding:16px;display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer;color:#164d56;list-style-position:inside}
+.food24-details>summary strong{font-size:14px}
+.food24-count{font-size:11px;color:#547481;text-align:right}
+.food24-inner{padding:0 14px 16px}
+.food24-inner>.explain{margin-top:2px}
+.food24-inner input[type="search"]{display:block;box-sizing:border-box;width:100%;margin:7px 0 7px;border-radius:10px;border:1px solid #c9dae0;padding:12px;font-size:16px;background:white;color:#223e4b}
+.food24-inner textarea{display:block;width:100%;box-sizing:border-box;margin-top:7px}
+.food24-subgroup{margin-top:11px;border:1px solid #dce8e9;border-radius:10px;overflow:hidden;background:#fff}
+.food24-subgroup>summary{cursor:pointer;padding:13px 12px;font-weight:750;font-size:12px;color:#38586b}
+.food24-subgroup>summary span{float:right;margin-right:4px;font-weight:500;color:#617f88}
+.food24-subgroup-content{padding:0 11px 9px}
+.food24-subgroup .factor24-row:first-child{border-top:1px solid #eff2f4}
+.food24-subgroup[hidden],.factor24-row[hidden]{display:none!important}
+@media(max-width:410px){.food24-details>summary{align-items:start;flex-direction:column;gap:5px}.food24-count{text-align:left}}

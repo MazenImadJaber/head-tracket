@@ -92,6 +92,10 @@ const HeadTrackReport = (() => {
       const exposureSummary=(items,name)=>{const known=items.filter(e=>['yes','no'].includes(e.pre24?.[name]));return `${known.filter(e=>e.pre24[name]==='yes').length}/${known.length}`;};
       listRows(factorNames.map(name=>[name,`Headache starts: ${exposureSummary(onset,name)} Yes/known; no-headache: ${exposureSummary(controls,name)} Yes/known`]),factorNames.length);
     }
+    heading('Food and drink diary notes');
+    const loggedFoods=filtered.filter(e=>e.foodNotes&&e.foodNotes.trim());
+    if(!loggedFoods.length)paragraph('No detailed food and drink notes recorded in this period.');
+    else listRows(loggedFoods.slice(0,30).map(e=>[fmtDate(e.occurredAt),e.foodNotes.slice(0,500)]),30);
     heading('Commonly recorded factors and symptoms');
     for(const [name,label] of [['trigger','Older unstructured factors'],['symptom','Associated symptoms'],['quality','Sensation'],['location','Location']]){
       const rows=freq(name).slice(0,5).map(([v,n])=>`${v} (${n})`).join(', ');

@@ -13,6 +13,53 @@
     ['Environment',['Bright light or prolonged screens','Strong smells, smoke or perfume','Loud noise','Weather or pressure change']],
     ['Other',['Hormonal change (if applicable)']]
   ];
+  // Reported foods and drinks for *exposure logging*, not validated or universal triggers.
+  // Grouping is intentionally broad: keep exact foods and meal times in the free-text diary.
+  const FOOD24 = [
+    ['Alcohol & caffeinated drinks', [
+      'Red wine', 'White or sparkling wine', 'Beer or cider', 'Spirits or cocktails',
+      'Coffee or espresso', 'Black or green tea', 'Energy drinks or pre-workout',
+      'Cola or other caffeinated soft drinks'
+    ]],
+    ['Chocolate, sweeteners & sugar', [
+      'Chocolate or cocoa', 'Aspartame (diet or sugar-free products)',
+      'Sucralose or other artificial sweeteners', 'Large sugary meal, sweets or desserts',
+      'Ice cream or very cold drinks'
+    ]],
+    ['Cheese & dairy', [
+      'Aged or hard cheese (cheddar, parmesan)',
+      'Brie or camembert (soft-ripened cheese)', 'Blue or mould cheese',
+      'Milk, yoghurt or other dairy products'
+    ]],
+    ['Processed meats, fish & seafood', [
+      'Bacon, ham, salami or sausages', 'Cured, smoked or dried meat',
+      'Smoked, canned or dried fish', 'Shellfish or other seafood'
+    ]],
+    ['Fermented, pickled & stored foods', [
+      'Soy sauce, miso or fermented soy', 'Kimchi, sauerkraut or fermented vegetables',
+      'Pickles or vinegar-heavy foods', 'Yeast extract (Vegemite, Marmite)',
+      'Very ripe or overripe fruit', 'Leftovers or long-stored prepared food',
+      'Fermented or sourdough bread'
+    ]],
+    ['Additives & packaged foods', [
+      'MSG (E621) or added glutamates', 'Instant noodles, soup or stock mixes',
+      'Flavoured chips, crisps or seasoned snacks', 'Processed takeaway or fast food',
+      'Nitrate or nitrite preservatives', 'Sulphites (dried fruit, wine, etc.)',
+      'Artificial colours or other food additives'
+    ]],
+    ['Fruits, vegetables & plant foods', [
+      'Citrus fruit or juice', 'Banana (especially very ripe)', 'Avocado',
+      'Tomatoes or tomato products', 'Strawberries or other berries',
+      'Pineapple or other tropical fruit', 'Dried fruit or raisins',
+      'Spinach or eggplant (aubergine)', 'Onion or garlic'
+    ]],
+    ['Nuts, grains & other foods', [
+      'Nuts, peanuts or nut butter', 'Beans, lentils or other pulses',
+      'Tofu or non-fermented soy foods', 'Wheat or gluten-containing foods',
+      'Eggs', 'Spicy foods or chilli', 'High-salt foods', 'Fried or fatty foods',
+      'Other food or drink (describe below)'
+    ]]
+  ];
   const MIGRAINE_FIELDS=['sided','pulsating','activity','nausea','light','sound','aura'];
   const MIGRAINE_ALLOWED={sided:['one','both','other','unsure'],pulsating:['yes','no','unsure'],activity:['yes','no','unsure'],nausea:['yes','no','unsure'],light:['yes','no','unsure'],sound:['yes','no','unsure'],aura:['yes','no','unsure']};
   const options = {
@@ -75,10 +122,11 @@
     }
     return [...new Set(vals.filter(v=>typeof v==='string' && options[key].includes(v)))];
   }
-  const factor24Keys = () => [...FACTORS24.flatMap(g=>g[1]),...customFactors];
+  const food24Keys = () => FOOD24.flatMap(g=>g[1]);
+  const factor24Keys = () => [...FACTORS24.flatMap(g=>g[1]),...food24Keys(),...customFactors];
   function clean24(x){
     if(!x||typeof x!=='object'||Array.isArray(x))return {};
-    return Object.fromEntries(Object.entries(x).slice(0,150).map(([name,value])=>[cleanFactor(name),value])
+    return Object.fromEntries(Object.entries(x).slice(0,350).map(([name,value])=>[cleanFactor(name),value])
       .filter(([name,value])=>name&&['yes','no','unsure'].includes(value)));
   }
   function cleanMigraine(x){
@@ -119,6 +167,7 @@
       duration: type==='episode' ? (end===null?null:Math.round((end-start)/60000)) : manualDuration,
       impact: ['0','1','2','3'].includes(String(x.impact)) ? String(x.impact) : '',
       medication: asString(x.medication,160),
+      foodNotes: asString(x.foodNotes,1500),
       notes: asString(x.notes)
     };
   }
@@ -225,18 +274,52 @@
     }).join('');
   }
   function renderFactor24(answers = readFactor24()) {
-    const unknown=Object.keys(answers).filter(k=>!factor24Keys().includes(k));
-    const grouped=[...FACTORS24.map(([n,items])=>[n,items]),...(customFactors.length?[['Your custom factors',customFactors]]:[]),...(unknown.length?[['Previously saved factors',unknown]]:[])];
-    $('factor24-choices').innerHTML=grouped.map(([group,items])=>`<div class="factor24-group"><h3>${htmlSafe(group)}</h3>${items.map(label=>`<div class="factor24-row"><div class="factor24-label">${htmlSafe(label)}</div><div class="factor24-switch" role="group" aria-label="${htmlSafe(label)} during previous 24 hours">${['yes','no','unsure'].map(v=>`<label><input type="radio" name="pre24-${[...factor24Keys(),...unknown].indexOf(label)}" data-factor="${htmlSafe(label)}" value="${v}" ${answers[label]===v?'checked':''}><span>${v==='yes'?'Yes':v==='no'?'No':'Unsure'}</span></label>`).join('')}</div></div>`).join('')}</div>`).join('');
+    const existingFood=$('food24-details');
+    const wasOpen=existingFood?.open ?? false;
+    const foodQuery=$('food24-search')?.value ?? '';
+    const foodNotesBefore=$('food-notes')?.value ?? '';
+    const activeFoodGroups=new Set([...document.querySelectorAll('.food24-subgroup[open]')].map(e=>e.dataset.foodGroup));
+    const known=factor24Keys(),unknown=Object.keys(answers).filter(k=>!known.includes(k));
+    const idx=new Map([...known,...unknown].map((name,i)=>[name,i]));
+    const rows=items=>items.map(label=>`<div class="factor24-row" data-food-search="${htmlSafe(label.toLocaleLowerCase())}"><div class="factor24-label">${htmlSafe(label)}</div><div class="factor24-switch" role="group" aria-label="${htmlSafe(label)} during previous 24 hours">${['yes','no','unsure'].map(v=>`<label><input type="radio" name="pre24-${idx.get(label)}" data-factor="${htmlSafe(label)}" value="${v}" ${answers[label]===v?'checked':''}><span>${v==='yes'?'Yes':v==='no'?'No':'Unsure'}</span></label>`).join('')}</div></div>`).join('');
+    const basic=FACTORS24.map(([group,items])=>`<div class="factor24-group"><h3>${htmlSafe(group)}</h3>${rows(items)}</div>`).join('');
+    const hasFoodAnswers=food24Keys().some(label=>answers[label]);
+    const food=`<details id="food24-details" class="food24-details" ${wasOpen||hasFoodAnswers?'open':''}><summary><strong>Food & drink checklist</strong><span id="food24-count" class="food24-count">Optional · ${food24Keys().length} exposures</span></summary>
+      <div class="food24-inner"><p class="explain">Select items you <strong>actually ate or drank</strong> in the 24 hours before the headache. These are <strong>possible exposures, not proven migraine triggers</strong>. Leave unanswered items blank; don't mark No unless you are sure.</p>
+      <label class="field-label" for="food24-search">Find a food or drink</label><input id="food24-search" type="search" inputmode="search" placeholder="Search cheese, chocolate, MSG…" value="${htmlSafe(foodQuery)}" autocomplete="off">
+      <div id="food24-search-status" class="hint-tiny" role="status"></div>
+      <div id="food24-categories">${FOOD24.map(([group,items],i)=>`<details class="food24-subgroup" data-food-group="${i}" ${activeFoodGroups.has(String(i))||items.some(label=>answers[label])?'open':''}><summary>${htmlSafe(group)} <span>${items.length} items</span></summary><div class="food24-subgroup-content">${rows(items)}</div></details>`).join('')}</div>
+      <label class="field-label" for="food-notes">Exact foods, drinks and approximate times (optional)</label><textarea id="food-notes" rows="3" maxlength="1500" placeholder="e.g. 12:30 pm – cheese sandwich; 3 pm – coffee. Include anything not listed."></textarea>
+      <p class="hint-tiny">Food cravings can be an early migraine symptom rather than a cause. This checklist is for observation, not a list of foods to eliminate.</p></div></details>`;
+    const extra=[...(customFactors.length?[['Your custom factors',customFactors]]:[]),...(unknown.length?[['Previously saved factors',unknown]]:[])].map(([group,items])=>`<div class="factor24-group"><h3>${htmlSafe(group)}</h3>${rows(items)}</div>`).join('');
+    $('factor24-choices').innerHTML=basic+food+extra;
+    $('food-notes').value=foodNotesBefore;
+    filterFoods();
     update24Count();
+  }
+  function filterFoods(){
+    const query=($('food24-search')?.value||'').trim().toLocaleLowerCase();
+    let visible=0;
+    document.querySelectorAll('.food24-subgroup').forEach(group=>{
+      let groupVisible=0;
+      group.querySelectorAll('.factor24-row').forEach(row=>{
+        const found=!query||row.dataset.foodSearch.includes(query);
+        row.hidden=!found;if(found){visible++;groupVisible++;}
+      });
+      group.hidden=groupVisible===0;
+      if(query&&groupVisible)group.open=true;
+    });
+    if($('food24-search-status'))$('food24-search-status').textContent=query?`${visible} matching food or drink item${visible===1?'':'s'}`:'';
   }
   function readFactor24(){
     const obj={};for(const input of document.querySelectorAll('#factor24-choices input:checked'))obj[input.dataset.factor]=input.value;
     return obj;
   }
   function update24Count(){
-    const n=document.querySelectorAll('#factor24-choices input:checked').length;
-    $('factor24-count').textContent=`${n} answered`;
+    const answers=readFactor24();
+    $('factor24-count').textContent=`${Object.keys(answers).length} answered`;
+    const foodCount=food24Keys().filter(n=>answers[n]).length;
+    const fc=$('food24-count');if(fc)fc.textContent=foodCount?`${foodCount} answered · ${food24Keys().length} listed`:`Optional · ${food24Keys().length} exposures`;
   }
   function loadMigraineForm(obj={}){for(const k of MIGRAINE_FIELDS)$('migraine-'+k).value=obj[k]||'';}
   function readMigraineForm(){return Object.fromEntries(MIGRAINE_FIELDS.map(k=>[k,$('migraine-'+k).value]));}
@@ -327,7 +410,7 @@
       dullness:$('dullness').dataset.missing==='true'?null:$('dullness').value,
       quality:checked('quality'),location:checked('location'),symptom:checked('symptom'),
       trigger:checked('trigger').length?checked('trigger'):(entries.find(e=>e.id===id)?.trigger||[]),
-      pre24:readFactor24(),migraine:readMigraineForm(),
+      pre24:readFactor24(),migraine:readMigraineForm(),foodNotes:$('food-notes').value,
       duration:$('duration').value,impact:$('impact').value,medication:$('medication').value,notes:$('notes').value
     });
   }
@@ -435,7 +518,7 @@
     }
     renderChoices('trigger',x.trigger);
     renderChoices('symptom',x.symptom);
-    renderFactor24(x.pre24);loadMigraineForm(x.migraine);
+    renderFactor24(x.pre24);$('food-notes').value=x.foodNotes||'';if(x.foodNotes)$('food24-details').open=true;loadMigraineForm(x.migraine);
     $('legacy-factors-field').hidden=!x.trigger.length;
     for(const s of ['quality','location','symptom','trigger'])setChecked(s,x[s]);
     $('duration').value=x.type==='episode'?'':(x.duration??'');
@@ -479,6 +562,7 @@
       const exposed=Object.entries(x.pre24||{}).filter(([k,v])=>v==='yes').map(([k])=>k);
       if(exposed.length)details.push(`Previous 24h (Yes): ${htmlSafe(exposed.join(', '))}`);
       if(Object.values(x.pre24||{}).length)details.push(`${Object.keys(x.pre24).length} 24h questions answered`);
+      if(x.foodNotes)details.push(`Food / drink diary: ${htmlSafe(x.foodNotes.slice(0,120))}${x.foodNotes.length>120?'…':''}`);
       const positive=Object.entries(x.migraine||{}).filter(([k,v])=>v==='yes').map(([k])=>({pulsating:'Throbbing',activity:'Movement worsens',nausea:'Nausea',light:'Light-sensitive',sound:'Sound-sensitive',aura:'Possible aura'}[k]||k));
       if(positive.length)details.push(`Headache features: ${htmlSafe(positive.join(', '))}`);
       return `<article class="entry-card">
@@ -607,8 +691,8 @@
     return '"'+s.replace(/"/g,'""')+'"';
   }
   function buildCsv() {
-    const fields=['type','episodeId','occurredAt','endedAt','headache','dullness','quality','location','symptom','trigger','duration','impact','medication','notes'];
-    const header=['Entry type','Linked episode ID','Check-in / start (ISO)','Check-out / finish (ISO)','Headache (0-10)','Dullness (0-10)','Dullness qualities','Location','Other symptoms','Possible factors','Duration (minutes)','Activity impact (0-3)','Medication / treatment','Notes'];
+    const fields=['type','episodeId','occurredAt','endedAt','headache','dullness','quality','location','symptom','trigger','duration','impact','medication','notes','foodNotes'];
+    const header=['Entry type','Linked episode ID','Check-in / start (ISO)','Check-out / finish (ISO)','Headache (0-10)','Dullness (0-10)','Dullness qualities','Location','Other symptoms','Possible factors','Duration (minutes)','Activity impact (0-3)','Medication / treatment','Notes','Foods / drinks and times'];
     const newer=['24h yes','24h no','24h unsure','Pain sides','Pulsating','Worse with activity','Nausea','Light sensitivity','Sound sensitivity','Aura'];
     const extra=e=>[...['yes','no','unsure'].map(val=>csvEscape(Object.entries(e.pre24||{}).filter(([k,v])=>v===val).map(([k])=>k))),...MIGRAINE_FIELDS.map(k=>csvEscape(e.migraine?.[k]||''))];
     const rows=entries.map(e=>[...fields.map(key=>csvEscape(e[key])),...extra(e)].join(','));
@@ -630,7 +714,7 @@
     if(!file)return;
     try {
       const raw=JSON.parse(await file.text());
-      if(!raw||raw.format!=='headtrack-backup'||![1,2,3,4,5,6].includes(raw.version)||!Array.isArray(raw.entries))throw Error('This is not a valid HeadTrack JSON backup.');
+      if(!raw||raw.format!=='headtrack-backup'||![1,2,3,4,5,6,7].includes(raw.version)||!Array.isArray(raw.entries))throw Error('This is not a valid HeadTrack JSON backup.');
       if(raw.version>=2&&!Array.isArray(raw.customFactors))throw Error('The backup has an invalid custom factor list.');
       if(raw.entries.length>50000)throw Error('This backup contains too many entries.');
       if(raw.version===3&&!Array.isArray(raw.episodes))throw Error('The backup has an invalid episode list.');
@@ -703,6 +787,7 @@
   for(const id of ['headache','dullness'])$(id).addEventListener('input',()=>{delete $(id).dataset.missing;updateSlider(id);});
   $('entry-form').addEventListener('submit',handleSave);
   $('factor24-choices').addEventListener('change',update24Count);
+  $('factor24-choices').addEventListener('input',e=>{if(e.target.id==='food24-search')filterFoods();});
   $('factor24-clear').addEventListener('click',()=>renderFactor24({}));
   $('log-headache').addEventListener('click',()=>{
     resetForm();$('entry-form').dataset.intent='headache';
@@ -753,7 +838,7 @@
     if(target.dataset.action==='delete')deleteItem(target.dataset.id);
   });
   $('export-json').addEventListener('click',()=>{
-    const data=JSON.stringify({format:'headtrack-backup',version:6,exportedAt:new Date().toISOString(),customFactors,customSymptoms,entries},null,2);
+    const data=JSON.stringify({format:'headtrack-backup',version:7,exportedAt:new Date().toISOString(),customFactors,customSymptoms,entries},null,2);
     exportFile(`headtrack-backup-${dateKey(new Date())}.json`,data,'application/json');
   });
   $('export-csv').addEventListener('click',()=>exportFile(`headtrack-entries-${dateKey(new Date())}.csv`,buildCsv(),'text/csv;charset=utf-8'));

@@ -1,7 +1,7 @@
 {
   "name": "HeadTrack – Migraine Review Diary",
   "short_name": "HeadTrack",
-  "description": "A private headache and 24-hour possible trigger diary for clinical review.",
+  "description": "A private headache, food exposure and 24-hour factor diary for clinical review.",
   "id": "./",
   "start_url": "./",
   "scope": "./",
